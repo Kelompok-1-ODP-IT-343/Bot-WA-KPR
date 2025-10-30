@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 	"github.com/joho/godotenv"
@@ -14,6 +15,7 @@ type Config struct {
 	GeminiAPIKey      string
 	APIKey            string
 	HTTPAddr          string
+	OTPExpiryMinutes  int
 }
 
 func NewConfig() domain.ConfigService {
@@ -30,12 +32,20 @@ func NewConfig() domain.ConfigService {
 		httpAddr = ":8080"
 	}
 
+	otpExpiryMinutes := 5 // default 5 minutes
+	if otpEnv := os.Getenv("OTP_EXPIRY_MINUTES"); otpEnv != "" {
+		if parsed, err := strconv.Atoi(otpEnv); err == nil && parsed > 0 {
+			otpExpiryMinutes = parsed
+		}
+	}
+
 	return &Config{
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		WhatsAppStorePath: storePath,
 		GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
 		APIKey:            os.Getenv("API_KEY"),
 		HTTPAddr:          httpAddr,
+		OTPExpiryMinutes:  otpExpiryMinutes,
 	}
 }
 
@@ -57,6 +67,10 @@ func (c *Config) GetAPIKey() string {
 
 func (c *Config) GetHTTPAddr() string {
 	return c.HTTPAddr
+}
+
+func (c *Config) GetOTPExpiryMinutes() int {
+	return c.OTPExpiryMinutes
 }
 
 func (c *Config) Validate() error {

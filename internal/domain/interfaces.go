@@ -31,4 +31,12 @@ type ConfigService interface {
 	GetGeminiAPIKey() string
 	GetAPIKey() string
 	GetHTTPAddr() string
+	GetOTPExpiryMinutes() int
+}
+
+// OTPService handles OTP generation, validation, and expiry
+type OTPService interface {
+	GenerateOTP(ctx context.Context, phone string, expirySeconds ...int) (*OTPResponse, error)
+	ValidateOTP(ctx context.Context, phone, code string) (*OTPValidateResponse, error)
+	CleanupExpiredOTPs(ctx context.Context) error
 }
