@@ -1,0 +1,12 @@
+.git
+.github
+Dockerfile
+dockerfile
+node_modules
+vendor
+tmp
+*.log
+coverage*
+.env
+.env.*
+README.md
