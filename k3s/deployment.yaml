@@ -35,18 +35,18 @@ spec:
             - secretRef:
                 name: wa-bot-secrets
           # kalau service health /health belum ada, ganti httpGet -> tcpSocket (9090)
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 9090
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 9090
-            initialDelaySeconds: 20
-            periodSeconds: 15
+          # readinessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 9090
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 10
+          # livenessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 9090
+          #   initialDelaySeconds: 20
+          #   periodSeconds: 15
           volumeMounts:
             - name: wa-store
               mountPath: /data
