@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wa-bot
+  namespace: griya-app-prod
+  labels:
+    app: wa-bot
+spec:
+  selector:
+    app: wa-bot
+  type: ClusterIP   # kalau mau akses langsung, ganti ke NodePort dan set nodePort: 30008
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
