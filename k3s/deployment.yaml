@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wa-bot
+  namespace: griya-app-prod
+  labels:
+    app: wa-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wa-bot
+  template:
+    metadata:
+      labels:
+        app: wa-bot
+    spec:
+      # (opsional) amankan file store
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      # (opsional) kalau memang kamu punya node label role=app
+      # nodeSelector:
+      #   role: app
+      containers:
+        - name: wa-bot
+          image: evanedrin/bot-wa-kpr:latest   # ganti ke image kamu kalau punya (mis. docker.io/maulanabn99/wa-bot-kpr:latest)
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: wa-bot-config
+            - secretRef:
+                name: wa-bot-secrets
+          # kalau service health /health belum ada, ganti httpGet -> tcpSocket (9090)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          volumeMounts:
+            - name: wa-store
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: wa-store
+          persistentVolumeClaim:
+            claimName: wa-store-pvc
