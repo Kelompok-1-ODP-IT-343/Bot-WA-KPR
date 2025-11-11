@@ -11,9 +11,16 @@ import (
 )
 
 var allowedTables = map[string]struct{}{
-	"users":              {},
-	"kpr_applications":   {},
-	"approval_workflows": {},
+	// Sesuai dengan ddl.sql
+	"users":             {},
+	"roles":             {},
+	"branch_staff":      {},
+	"user_profiles":     {},
+	"kpr_rates":         {},
+	"kpr_applications":  {},
+	"approval_workflow": {}, // nama tabel di DDL adalah singular
+	// direferensikan oleh kpr_applications (FK)
+	"properties": {},
 }
 
 type AIQueryService struct {
@@ -29,10 +36,10 @@ func NewAIQueryService(db domain.DatabaseService, geminiKey string) domain.AIQue
 }
 
 func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQLPlan, error) {
-	if a.geminiKey == "" {
-		// Fallback: naive parser
-		return a.naivePlan(text)
-	}
+    if a.geminiKey == "" {
+        // Fallback: naive parser
+        return a.naivePlan(text)
+    }
 
 	client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
 	if err != nil {
@@ -40,8 +47,19 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-2.0-flash")
-	prompt := "Anda adalah perencana SQL aman. Kembalikan JSON dengan field: operation(SELECT), table, columns(optional array), filters(array of {column, op='=', value}), limit(optional int). Hanya izinkan tabel: users, kpr_applications, approval_workflows. Teks: " + text
+    model := client.GenerativeModel("gemini-2.0-flash")
+    // Prompt disesuaikan dengan skema di ddl.sql (nama tabel persis)
+    prompt := "Anda adalah perencana SQL AMAN untuk PostgreSQL. Kembalikan hanya JSON dengan field: " +
+        "operation (hanya 'SELECT'), " +
+        "table (salah satu dari: users, roles, branch_staff, user_profiles, kpr_rates, kpr_applications, approval_workflow, properties), " +
+        "columns (opsional array nama kolom), " +
+        "filters (opsional array dari objek {column, op='=', value}), " +
+        "limit (opsional int; default 20). " +
+        "Aturan keras: (1) HANYA tabel whitelist di atas; gunakan nama persis sesuai DDL (termasuk singular 'approval_workflow'). " +
+        "(2) JANGAN gunakan JOIN, subquery, agregasi, ORDER BY, atau GROUP BY. " +
+        "(3) Filters hanya boleh memakai operator '='. " +
+        "(4) Jika columns/filters tidak disebutkan, kembalikan field tersebut kosong. " +
+        "Teks: " + text
 
 	resp, err := model.GenerateContent(ctx, ai.Text(prompt))
 	if err != nil {
@@ -66,10 +84,10 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 }
 
 func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan) (string, error) {
-	// Validate plan
-	if _, ok := allowedTables[plan.Table]; !ok || strings.ToUpper(plan.Operation) != "SELECT" {
-		return "", fmt.Errorf("operation not allowed: only SELECT from users, kpr_applications, approval_workflows")
-	}
+    // Validate plan
+    if _, ok := allowedTables[plan.Table]; !ok || strings.ToUpper(plan.Operation) != "SELECT" {
+        return "", fmt.Errorf("operation not allowed: only SELECT from users, roles, branch_staff, user_profiles, kpr_rates, kpr_applications, approval_workflow, properties")
+    }
 
 	query, args := a.buildSafeSelect(plan)
 	rows, err := a.db.Query(ctx, query, args...)
@@ -86,20 +104,30 @@ func (a *AIQueryService) naivePlan(text string) (*domain.SQLPlan, error) {
 	var tbl string
 	if strings.Contains(lower, "users") {
 		tbl = "users"
+	} else if strings.Contains(lower, "roles") {
+		tbl = "roles"
+	} else if strings.Contains(lower, "branch_staff") {
+		tbl = "branch_staff"
+	} else if strings.Contains(lower, "user_profiles") {
+		tbl = "user_profiles"
+	} else if strings.Contains(lower, "kpr_rates") {
+		tbl = "kpr_rates"
 	} else if strings.Contains(lower, "kpr_applications") {
 		tbl = "kpr_applications"
-	} else if strings.Contains(lower, "approval_workflows") {
-		tbl = "approval_workflows"
+	} else if strings.Contains(lower, "approval_workflow") { // singular sesuai DDL
+		tbl = "approval_workflow"
+	} else if strings.Contains(lower, "properties") {
+		tbl = "properties"
 	} else {
 		return nil, fmt.Errorf("table not allowed")
 	}
 
-	return &domain.SQLPlan{
-		Operation: "SELECT",
-		Table:     tbl,
-		Filters:   []domain.Filter{},
-		Limit:     10,
-	}, nil
+    return &domain.SQLPlan{
+        Operation: "SELECT",
+        Table:     tbl,
+        Filters:   []domain.Filter{},
+        Limit:     20,
+    }, nil
 }
 
 func (a *AIQueryService) parsePlanJSON(s string) (*domain.SQLPlan, error) {

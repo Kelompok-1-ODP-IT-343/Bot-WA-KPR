@@ -22,6 +22,38 @@ type WhatsAppService struct {
 	client *whatsmeow.Client
 }
 
+// stripDevicePart menghapus suffix perangkat pada user JID (contoh: 628xx:12 -> 628xx)
+func stripDevicePart(user string) string {
+	if idx := strings.Index(user, ":"); idx != -1 {
+		return user[:idx]
+	}
+	return user
+}
+
+// normalizePhone membersihkan input agar hanya berisi digit nomor WA
+// - menghapus bagian setelah '@' jika ada (JID penuh)
+// - menghapus suffix perangkat (":device")
+// - menghapus karakter non-digit (spasi, tanda plus, dash)
+func normalizePhone(s string) string {
+	s = strings.TrimSpace(s)
+	// buang domain JID jika ada
+	if at := strings.Index(s, "@"); at != -1 {
+		s = s[:at]
+	}
+	// buang suffix device
+	s = stripDevicePart(s)
+	// buang plus
+	s = strings.ReplaceAll(s, "+", "")
+	// keep hanya digit
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func NewWhatsAppService(storePath string) (*WhatsAppService, error) {
 	log.Printf("Initializing WhatsApp service with store path: %s", storePath)
 
@@ -96,7 +128,14 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 		return fmt.Errorf("WhatsApp client is not connected")
 	}
 
-	to := waTypes.NewJID(phone, waTypes.DefaultUserServer)
+	phoneNorm := normalizePhone(phone)
+	if phoneNorm == "" {
+		return fmt.Errorf("invalid phone input")
+	}
+	if phoneNorm != phone {
+		log.Printf("[WA] Normalized phone '%s' -> '%s'", phone, phoneNorm)
+	}
+	to := waTypes.NewJID(phoneNorm, waTypes.DefaultUserServer)
 	msg := &waProto.Message{Conversation: &message}
 
 	// Retry mechanism for encryption issues
@@ -159,6 +198,14 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 
 func (w *WhatsAppService) IsConnected() bool {
 	return w.client.IsConnected()
+}
+
+// Reconnect mencoba menyambungkan kembali client jika terputus
+func (w *WhatsAppService) Reconnect(ctx context.Context) error {
+	if err := w.client.Connect(); err != nil {
+		return fmt.Errorf("failed to reconnect: %w", err)
+	}
+	return nil
 }
 
 func (w *WhatsAppService) AddEventHandler(handler func(interface{})) {

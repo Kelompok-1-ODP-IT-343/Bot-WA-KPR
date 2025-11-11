@@ -30,7 +30,11 @@ func (h *BotHandler) HandleMessage(evt interface{}) {
 			return
 		}
 
-		jid := e.Info.MessageSource.Chat
+		// Abaikan pesan dari diri sendiri atau dari grup
+		if e.Info.IsFromMe || e.Info.IsGroup {
+			return
+		}
+
 		from := e.Info.MessageSource.Sender
 		text := strings.TrimSpace(services.ExtractText(e))
 		if text == "" {
@@ -41,7 +45,8 @@ func (h *BotHandler) HandleMessage(evt interface{}) {
 
 		// Route message - hanya untuk AI query
 		ctx := context.Background()
-		h.handleQueryRequest(ctx, jid.String(), text)
+		// Kirim balasan ke pengirim (user) dengan format nomor saja
+		h.handleQueryRequest(ctx, from.User, text)
 	}
 }
 
