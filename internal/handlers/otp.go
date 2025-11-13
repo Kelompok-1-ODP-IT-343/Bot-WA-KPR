@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/services"
@@ -72,7 +73,8 @@ func (h *OTPHandler) GenerateOTP(w http.ResponseWriter, r *http.Request) {
 		resp.Code, resp.ExpiresIn)
 
 	if h.whatsappService.IsConnected() {
-		if err := h.whatsappService.SendMessage(r.Context(), req.Phone, message); err != nil {
+		// Unsend khusus OTP: gunakan durasi sesuai expiry
+		if err := h.whatsappService.SendMessageWithAutoRevoke(r.Context(), req.Phone, message, time.Duration(resp.ExpiresIn)*time.Second); err != nil {
 			log.Printf("Failed to send OTP via WhatsApp: %v", err)
 			// Continue anyway, return the OTP response
 		}

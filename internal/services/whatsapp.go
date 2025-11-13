@@ -172,26 +172,77 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 
 	log.Printf("[WA] ✅ Sent message ID: %s to %s", resp.ID, phone)
 
-	// Auto revoke/unsend after 1 minute
-	go func(messageID string, jid waTypes.JID) {
-		log.Printf("[WA] Scheduling auto-revoke for message %s after 1 minute", messageID)
+	return nil
+}
+
+// SendMessageWithAutoRevoke mengirim pesan dan otomatis unsend setelah durasi 'after'
+func (w *WhatsAppService) SendMessageWithAutoRevoke(ctx context.Context, phone, message string, after time.Duration) error {
+	// Check if client is connected
+	if !w.client.IsConnected() {
+		return fmt.Errorf("WhatsApp client is not connected")
+	}
+
+	phoneNorm := normalizePhone(phone)
+	if phoneNorm == "" {
+		return fmt.Errorf("invalid phone input")
+	}
+	if phoneNorm != phone {
+		log.Printf("[WA] Normalized phone '%s' -> '%s'", phone, phoneNorm)
+	}
+	to := waTypes.NewJID(phoneNorm, waTypes.DefaultUserServer)
+	msg := &waProto.Message{Conversation: &message}
+
+	// Retry mechanism for encryption issues
+	var resp whatsmeow.SendResponse
+	var err error
+	maxRetries := 3
+
+	for i := 0; i < maxRetries; i++ {
+		resp, err = w.client.SendMessage(ctx, to, msg)
+		if err == nil {
+			break
+		}
+
+		if strings.Contains(fmt.Sprintf("%v", err), "can't encrypt message") ||
+			strings.Contains(fmt.Sprintf("%v", err), "no signal session established") {
+			log.Printf("[WA] Encryption error (attempt %d/%d): %v", i+1, maxRetries, err)
+
+			if i < maxRetries-1 {
+				time.Sleep(time.Duration(i+1) * 2 * time.Second)
+				log.Printf("[WA] Retrying message send to %s...", phone)
+				continue
+			}
+		}
+
+		// For other errors, don't retry
+		break
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to send message after %d attempts: %w", maxRetries, err)
+	}
+
+	log.Printf("[WA] ✅ Sent message ID: %s to %s (auto-revoke scheduled in %s)", resp.ID, phone, after)
+
+	// Auto revoke/unsend after specified duration
+	go func(messageID string, jid waTypes.JID, delay time.Duration) {
+		log.Printf("[WA] Scheduling auto-revoke for message %s after %s", messageID, delay)
 		select {
-		case <-time.After(1 * time.Minute):
-			log.Printf("[WA] Auto-revoking message %s after 1 minute", messageID)
-			// Use whatsmeow's built-in BuildRevoke method
+		case <-time.After(delay):
+			log.Printf("[WA] Auto-revoking message %s after %s", messageID, delay)
 			revoke := w.client.BuildRevoke(jid, w.client.Store.ID.ToNonAD(), messageID)
 
 			_, err := w.client.SendMessage(context.Background(), jid, revoke)
 			if err != nil {
 				log.Printf("[WA] Failed to revoke message %s: %v", messageID, err)
 			} else {
-				log.Printf("[WA] ✅ Auto-revoked message %s after 1 minute", messageID)
+				log.Printf("[WA] ✅ Auto-revoked message %s after %s", messageID, delay)
 			}
 		case <-ctx.Done():
 			log.Printf("[WA] Auto-revoke context canceled for message %s", messageID)
 			return
 		}
-	}(resp.ID, to)
+	}(resp.ID, to, after)
 
 	return nil
 }

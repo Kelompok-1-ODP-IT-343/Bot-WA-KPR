@@ -3,20 +3,23 @@ package domain
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 // WhatsAppService handles WhatsApp messaging operations
 type WhatsAppService interface {
 	SendMessage(ctx context.Context, phone, message string) error
+	// SendMessageWithAutoRevoke mengirim pesan dan otomatis unsend setelah durasi tertentu
+	SendMessageWithAutoRevoke(ctx context.Context, phone, message string, after time.Duration) error
 	IsConnected() bool
 }
 
 // AIQueryService handles AI-powered database queries
 type AIQueryService interface {
-    PlanQuery(ctx context.Context, text string) (*SQLPlan, error)
-    ExecuteQuery(ctx context.Context, plan *SQLPlan) (string, error)
-    // AnswerWithDB: generate SQL plan, execute, feed DB data back into AI with basePrompt, return final answer
-    AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error)
+	PlanQuery(ctx context.Context, text string) (*SQLPlan, error)
+	ExecuteQuery(ctx context.Context, plan *SQLPlan) (string, error)
+	// AnswerWithDB: generate SQL plan, execute, feed DB data back into AI with basePrompt, return final answer
+	AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error)
 }
 
 // DatabaseService handles database operations
