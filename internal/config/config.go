@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	DatabaseURL       string
-	WhatsAppStorePath string
-	GeminiAPIKey      string
-	APIKey            string
-	HTTPAddr          string
-	OTPExpiryMinutes  int
+    DatabaseURL       string
+    WhatsAppStorePath string
+    GeminiAPIKey      string
+    APIKey            string
+    HTTPAddr          string
+    OTPExpiryMinutes  int
+    KPRPromptPath     string
 }
 
 func NewConfig() domain.ConfigService {
@@ -32,21 +33,27 @@ func NewConfig() domain.ConfigService {
 		httpAddr = ":8080"
 	}
 
-	otpExpiryMinutes := 5 // default 5 minutes
-	if otpEnv := os.Getenv("OTP_EXPIRY_MINUTES"); otpEnv != "" {
-		if parsed, err := strconv.Atoi(otpEnv); err == nil && parsed > 0 {
-			otpExpiryMinutes = parsed
-		}
-	}
+    otpExpiryMinutes := 5 // default 5 minutes
+    if otpEnv := os.Getenv("OTP_EXPIRY_MINUTES"); otpEnv != "" {
+        if parsed, err := strconv.Atoi(otpEnv); err == nil && parsed > 0 {
+            otpExpiryMinutes = parsed
+        }
+    }
+
+    promptPath := os.Getenv("KPR_PROMPT_PATH")
+    if promptPath == "" {
+        promptPath = "kpr_prompt.txt"
+    }
 
 	return &Config{
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		WhatsAppStorePath: storePath,
 		GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
 		APIKey:            os.Getenv("API_KEY"),
-		HTTPAddr:          httpAddr,
-		OTPExpiryMinutes:  otpExpiryMinutes,
-	}
+        HTTPAddr:          httpAddr,
+        OTPExpiryMinutes:  otpExpiryMinutes,
+        KPRPromptPath:     promptPath,
+    }
 }
 
 func (c *Config) GetDatabaseURL() string {
@@ -70,7 +77,11 @@ func (c *Config) GetHTTPAddr() string {
 }
 
 func (c *Config) GetOTPExpiryMinutes() int {
-	return c.OTPExpiryMinutes
+    return c.OTPExpiryMinutes
+}
+
+func (c *Config) GetKPRPromptPath() string {
+    return c.KPRPromptPath
 }
 
 func (c *Config) Validate() error {

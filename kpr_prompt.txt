@@ -1,0 +1,173 @@
+# 🏡 Analisis Produk Kredit Pemilikan Rumah (KPR) — BNI Griya
+
+## 📘 Ringkasan Eksekutif
+**BNI Griya** adalah produk pembiayaan kepemilikan rumah yang dikembangkan oleh **Bank Negara Indonesia (BNI)** untuk mendukung kebutuhan hunian masyarakat Indonesia.
+Produk ini menawarkan berbagai bentuk fasilitas kredit seperti pembelian, pembangunan, renovasi, refinancing, dan take over dari bank lain.
+
+BNI Griya dirancang dengan tujuan memperluas akses masyarakat terhadap pembiayaan perumahan yang terjangkau, berkelanjutan, dan sesuai dengan prinsip manajemen risiko perbankan nasional.
+
+---
+
+## 🧩 Tujuan Strategis Produk
+1. **Memperkuat penetrasi pasar ritel** di segmen kredit properti.
+2. **Meningkatkan akses masyarakat** terhadap pembiayaan rumah layak huni.
+3. **Mendukung program pemerintah** di sektor perumahan dan pembiayaan properti.
+4. **Meningkatkan kontribusi portofolio kredit produktif** dengan risiko terukur.
+5. **Mendorong digitalisasi proses KPR** melalui integrasi aplikasi BNI Mobile Banking dan platform e-Form.
+
+---
+
+## ⚙️ Karakteristik Produk
+
+| Aspek | Deskripsi |
+|-------|------------|
+| **Nama Produk** | BNI Griya |
+| **Jenis Pembiayaan** | Kredit Pemilikan Rumah (KPR) |
+| **Segmen Nasabah** | Individu (pegawai, profesional, wirausaha) |
+| **Mata Uang** | Rupiah (IDR) |
+| **Tujuan Pembiayaan** | Pembelian, pembangunan, renovasi, refinancing, take over |
+| **Jangka Waktu** | Maksimum 30 tahun |
+| **Suku Bunga** | Fixed pada periode awal, kemudian floating sesuai kebijakan BNI |
+| **Plafon Pinjaman** | Berdasarkan kemampuan bayar dan nilai agunan |
+| **Agunan Utama** | Properti yang dibiayai (SHM/HGB atas nama peminjam) |
+| **Asuransi Wajib** | Asuransi jiwa dan asuransi kebakaran |
+| **Skema Pembayaran** | Angsuran tetap (anuitas) atau fleksibel sesuai kesepakatan |
+
+---
+
+## 📜 Regulasi dan Kepatuhan
+BNI Griya beroperasi dalam kerangka regulasi yang ditetapkan oleh:
+- **Otoritas Jasa Keuangan (OJK)**
+  - POJK No. 48/POJK.03/2017 tentang Transparansi Informasi Produk dan Penggunaan Data Nasabah.
+  - POJK No. 35/POJK.03/2018 tentang Penilaian Kualitas Aset Bank Umum.
+- **Bank Indonesia (BI)**
+  - Ketentuan **Loan to Value (LTV)** untuk KPR non-subsidi.
+- **Undang-Undang Nomor 10 Tahun 1998** tentang Perbankan.
+- **Peraturan Perlindungan Konsumen Jasa Keuangan**.
+
+> Kepatuhan terhadap regulasi ini memastikan bahwa BNI Griya berjalan sesuai prinsip kehati-hatian, transparansi, dan perlindungan konsumen.
+
+---
+
+## 📊 Struktur Suku Bunga
+
+| Periode | Jenis Suku Bunga | Kisaran (%) | Keterangan |
+|----------|------------------|--------------|-------------|
+| Tahun 1–3 | Fixed | 6.75 – 9.00 | Promosi untuk nasabah baru |
+| Setelah tahun ke-3 | Floating | Mengacu pada Prime Lending Rate BNI | Dapat berubah sesuai kebijakan moneter |
+| Suku bunga penalti | ± 1% | Jika pelunasan dipercepat dalam periode fixed |
+
+BNI juga memberikan opsi **program bunga tetap jangka panjang (hybrid fixed-floating)** untuk meningkatkan stabilitas pembayaran nasabah.
+
+---
+
+## 👥 Kriteria dan Persyaratan Nasabah
+
+| Kriteria | Persyaratan |
+|-----------|-------------|
+| **Usia** | Minimal 21 tahun, maksimal 55 tahun (pegawai) / 60 tahun (wirausaha) saat kredit jatuh tempo |
+| **Pekerjaan** | Pegawai tetap ≥ 2 tahun, profesional, atau wirausaha dengan usaha minimal 2 tahun |
+| **Pendapatan Minimum** | Disesuaikan dengan besaran angsuran dan Debt-to-Income Ratio (maks. 40%) |
+| **Status Kewarganegaraan** | Warga Negara Indonesia (WNI) |
+| **Dokumen Wajib** | KTP, NPWP, slip gaji, rekening koran 3 bulan, dokumen properti |
+
+---
+
+## 💰 Simulasi Kredit (Contoh)
+**Data Simulasi:**
+- Harga rumah: Rp 1.000.000.000
+- Uang muka: 20% → Rp 200.000.000
+- Plafon pinjaman: Rp 800.000.000
+- Tenor: 20 tahun
+- Suku bunga tetap: 6.75% (3 tahun pertama)
+
+**Hasil Estimasi:**
+- Angsuran per bulan (anuitas): ± Rp 6.100.000
+- Total pembayaran bunga 20 tahun: ± Rp 646.000.000
+> Simulasi bersifat indikatif dan dapat berubah sesuai kebijakan suku bunga dan premi asuransi.
+
+---
+
+## 🧠 Analisis Risiko
+
+| Jenis Risiko | Penjelasan | Strategi Mitigasi |
+|---------------|-------------|--------------------|
+| **Risiko Suku Bunga** | Kenaikan bunga floating meningkatkan beban angsuran | Edukasi nasabah & opsi fixed rate |
+| **Risiko Kredit** | Potensi gagal bayar akibat penurunan pendapatan | Skoring kredit, asuransi jiwa, dan penjadwalan ulang |
+| **Risiko Likuiditas** | Ketidakseimbangan pendanaan jangka panjang | Diversifikasi sumber dana |
+| **Risiko Operasional** | Kesalahan input, fraud, atau kegagalan sistem | Otomasi proses dan audit rutin |
+| **Risiko Pasar Properti** | Penurunan nilai agunan | Kebijakan LTV konservatif dan appraisal berkala |
+
+---
+
+## 📈 Kinerja dan Posisi Pasar
+BNI Griya menempati posisi strategis di antara produk KPR bank nasional:
+
+| Bank | Produk | Karakteristik Utama |
+|------|---------|---------------------|
+| **BNI** | Griya | Tenor panjang, bunga kompetitif, integrasi digital |
+| **Mandiri** | KPR Mandiri | Fleksibilitas refinancing & cashback |
+| **BTN** | KPR BTN | Fokus subsidi FLPP & segmen MBR |
+| **BRI** | KPR BRI | Distribusi luas hingga daerah rural |
+
+> BNI Griya fokus pada segmen menengah ke atas dan pembeli rumah pertama (first-time home buyer).
+
+---
+
+## 🧩 Analisis SWOT
+
+| Kekuatan (Strengths) | Kelemahan (Weaknesses) |
+|-----------------------|------------------------|
+| Reputasi kuat BNI di sektor keuangan nasional | Ketergantungan pada kebijakan suku bunga acuan |
+| Tenor hingga 30 tahun (fleksibel) | Proses manual masih terjadi di beberapa cabang |
+| Program digital KPR melalui BNI Mobile | Perlu inovasi lebih di segmen millennial |
+
+| Peluang (Opportunities) | Ancaman (Threats) |
+|---------------------------|------------------|
+| Peningkatan permintaan hunian urban | Persaingan agresif antar bank dan fintech properti |
+| Penguatan digital onboarding | Ketidakpastian ekonomi dan fluktuasi pasar properti |
+
+---
+
+## 🧮 Rasio Keuangan (Simulasi Analitis)
+
+| Rasio | Nilai | Keterangan |
+|--------|--------|-------------|
+| **Loan to Value (LTV)** | 80% | Mematuhi ketentuan BI |
+| **Debt Service Ratio (DSR)** | 35% | Di bawah ambang batas 40% |
+| **Net Interest Margin (NIM)** | 3.5% | Menunjukkan efisiensi laba bunga |
+| **Non Performing Loan (NPL)** | < 2.5% | Menandakan kualitas portofolio baik |
+
+---
+
+## 🧭 Rekomendasi Pengembangan
+1. **Digitalisasi penuh proses KPR**, termasuk verifikasi dokumen dan appraisal properti.
+2. **Kolaborasi dengan developer dan fintech** untuk memperluas ekosistem properti digital.
+3. **Program bunga tetap jangka panjang** untuk stabilitas pembayaran nasabah.
+4. **Peningkatan literasi keuangan** melalui simulasi interaktif dan edukasi digital.
+5. **Integrasi data scoring AI/ML** untuk memperkuat mitigasi risiko kredit.
+
+---
+
+## 📚 Metadata (Untuk Pengindeksan AI)
+
+| Kunci | Nilai |
+|-------|-------|
+| **Domain** | Perbankan / Pembiayaan Properti / Retail Finance |
+| **Organisasi** | PT Bank Negara Indonesia (Persero) Tbk |
+| **Produk** | BNI Griya |
+| **Kategori** | Kredit Pemilikan Rumah (KPR) |
+| **Bahasa** | Bahasa Indonesia |
+| **Tanggal Pembaruan** | 13 November 2025 |
+| **Kata Kunci** | KPR, BNI Griya, BNI, kredit rumah, bunga KPR, perbankan, OJK, properti, pembiayaan rumah, mortgage |
+| **Lisensi** | Informasi publik non-rahasia |
+| **Versi Dokumen** | 2.0 (Komprehensif dan AI-Index Ready) |
+
+---
+
+## 🏁 Kesimpulan
+BNI Griya merupakan **produk KPR unggulan** dengan struktur bunga yang kompetitif, tenor fleksibel, dan dukungan digitalisasi yang progresif.
+Kombinasi antara **stabilitas institusional BNI** dan **orientasi inovatif** membuat produk ini relevan menghadapi tantangan sektor properti modern.
+Dengan strategi peningkatan digitalisasi dan kolaborasi lintas sektor, BNI Griya memiliki potensi untuk memperkuat dominasi BNI di pasar pembiayaan perumahan nasional.
+
+---

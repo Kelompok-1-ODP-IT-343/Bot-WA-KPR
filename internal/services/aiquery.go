@@ -24,8 +24,8 @@ var allowedTables = map[string]struct{}{
 }
 
 type AIQueryService struct {
-	db        domain.DatabaseService
-	geminiKey string
+    db        domain.DatabaseService
+    geminiKey string
 }
 
 func NewAIQueryService(db domain.DatabaseService, geminiKey string) domain.AIQueryService {
@@ -97,6 +97,75 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 	defer rows.Close()
 
 	return a.rowsToText(rows, 20)
+}
+
+// AnswerWithDB implements full flow:
+// 1) Model menghasilkan rencana SELECT aman (PlanQuery)
+// 2) Eksekusi ke database (ExecuteQuery)
+// 3) Gabungkan hasil sebagai konteks, lalu minta jawaban AI berbasis basePrompt + pertanyaan user
+func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error) {
+    // Generate plan (uses model if geminiKey set, else naive)
+    plan, err := a.PlanQuery(ctx, text)
+    if err != nil {
+        return "", fmt.Errorf("plan error: %w", err)
+    }
+
+    // Execute query
+    dbContext, err := a.ExecuteQuery(ctx, plan)
+    if err != nil {
+        return "", fmt.Errorf("query error: %w", err)
+    }
+
+    // If no AI key, fallback to DB context
+    if strings.TrimSpace(a.geminiKey) == "" {
+        if strings.TrimSpace(dbContext) != "" {
+            return dbContext, nil
+        }
+        return "AI tidak aktif dan tidak ada konteks data.", nil
+    }
+
+    client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
+    if err != nil {
+        return "", fmt.Errorf("gemini client: %w", err)
+    }
+    defer client.Close()
+
+    model := client.GenerativeModel("gemini-2.0-flash")
+
+    var sb strings.Builder
+    if basePrompt != "" {
+        sb.WriteString(basePrompt)
+        sb.WriteString("\n\n")
+    }
+    if strings.TrimSpace(dbContext) != "" {
+        sb.WriteString("[KONTEKS DATA]:\n")
+        sb.WriteString(dbContext)
+        sb.WriteString("\n\n")
+    }
+    sb.WriteString("[PERTANYAAN USER]: ")
+    sb.WriteString(text)
+
+    resp, err := model.GenerateContent(ctx, ai.Text(sb.String()))
+    if err != nil {
+        return "", fmt.Errorf("gemini: %w", err)
+    }
+
+    var out string
+    for _, c := range resp.Candidates {
+        for _, p := range c.Content.Parts {
+            if t, ok := p.(ai.Text); ok {
+                out += string(t)
+            }
+        }
+    }
+
+    if strings.TrimSpace(out) == "" {
+        if strings.TrimSpace(dbContext) != "" {
+            return dbContext, nil
+        }
+        return "Tidak ada jawaban.", nil
+    }
+    return out, nil
 }
 
 func (a *AIQueryService) naivePlan(text string) (*domain.SQLPlan, error) {

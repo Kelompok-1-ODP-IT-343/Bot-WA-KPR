@@ -13,8 +13,10 @@ type WhatsAppService interface {
 
 // AIQueryService handles AI-powered database queries
 type AIQueryService interface {
-	PlanQuery(ctx context.Context, text string) (*SQLPlan, error)
-	ExecuteQuery(ctx context.Context, plan *SQLPlan) (string, error)
+    PlanQuery(ctx context.Context, text string) (*SQLPlan, error)
+    ExecuteQuery(ctx context.Context, plan *SQLPlan) (string, error)
+    // AnswerWithDB: generate SQL plan, execute, feed DB data back into AI with basePrompt, return final answer
+    AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error)
 }
 
 // DatabaseService handles database operations
@@ -32,6 +34,7 @@ type ConfigService interface {
 	GetAPIKey() string
 	GetHTTPAddr() string
 	GetOTPExpiryMinutes() int
+	GetKPRPromptPath() string
 }
 
 // OTPService handles OTP generation, validation, and expiry
@@ -39,4 +42,9 @@ type OTPService interface {
 	GenerateOTP(ctx context.Context, phone string, expirySeconds ...int) (*OTPResponse, error)
 	ValidateOTP(ctx context.Context, phone, code string) (*OTPValidateResponse, error)
 	CleanupExpiredOTPs(ctx context.Context) error
+}
+
+// KPRQAService handles KPR Q&A with optional DB context
+type KPRQAService interface {
+	Ask(ctx context.Context, text string) (string, error)
 }

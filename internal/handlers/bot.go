@@ -12,15 +12,15 @@ import (
 )
 
 type BotHandler struct {
-	aiQuery  domain.AIQueryService
-	whatsapp domain.WhatsAppService
+    qa       domain.KPRQAService
+    whatsapp domain.WhatsAppService
 }
 
-func NewBotHandler(aiQuery domain.AIQueryService, whatsapp domain.WhatsAppService) *BotHandler {
-	return &BotHandler{
-		aiQuery:  aiQuery,
-		whatsapp: whatsapp,
-	}
+func NewBotHandler(qa domain.KPRQAService, whatsapp domain.WhatsAppService) *BotHandler {
+    return &BotHandler{
+        qa:       qa,
+        whatsapp: whatsapp,
+    }
 }
 
 func (h *BotHandler) HandleMessage(evt interface{}) {
@@ -51,19 +51,13 @@ func (h *BotHandler) HandleMessage(evt interface{}) {
 }
 
 func (h *BotHandler) handleQueryRequest(ctx context.Context, phone, text string) {
-	plan, err := h.aiQuery.PlanQuery(ctx, text)
-	if err != nil {
-		h.sendReply(ctx, phone, fmt.Sprintf("AI error: %v", err))
-		return
-	}
+    result, err := h.qa.Ask(ctx, text)
+    if err != nil {
+        h.sendReply(ctx, phone, fmt.Sprintf("AI error: %v", err))
+        return
+    }
 
-	result, err := h.aiQuery.ExecuteQuery(ctx, plan)
-	if err != nil {
-		h.sendReply(ctx, phone, fmt.Sprintf("Query error: %v", err))
-		return
-	}
-
-	h.sendReply(ctx, phone, result)
+    h.sendReply(ctx, phone, result)
 }
 
 func (h *BotHandler) sendReply(ctx context.Context, phone, message string) {
