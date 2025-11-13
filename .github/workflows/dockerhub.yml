@@ -55,3 +55,42 @@ jobs:
         run: |
           echo "Pushed tags:"
           echo "${{ steps.meta.outputs.tags }}"
+
+      - name: Get SHA Tag
+        id: image
+        run: |
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | grep 'sha-' | head -n 1)
+          echo "sha_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Using tag: $TAG"
+
+      # --- TRIVY SCAN (SIMPLE & CLEAR) ---
+      - name: Trivy Scan
+        id: trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          # Jika menggunakan Latest
+          image-ref: docker.io/satuatap/bot-wa-kpr:latest
+          # Jika mengggunakan SHA
+          # image-ref: ${{ steps.image.outputs.sha_tag }}
+          format: 'table'
+          vuln-type: 'os,library'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
+          ignore-unfixed: false
+          output: trivy-report.txt
+
+      # --- GITHUB SUMMARY (CLEAR) ---
+      - name: Upload Trivy Summary
+        run: |
+          echo "## 🔍 Trivy Vulnerability Scan Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "**Image scanned:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ steps.image.outputs.sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 📄 Full Trivy Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat trivy-report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
