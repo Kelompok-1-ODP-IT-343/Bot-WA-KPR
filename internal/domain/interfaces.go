@@ -16,10 +16,13 @@ type WhatsAppService interface {
 
 // AIQueryService handles AI-powered database queries
 type AIQueryService interface {
-	PlanQuery(ctx context.Context, text string) (*SQLPlan, error)
-	ExecuteQuery(ctx context.Context, plan *SQLPlan) (string, error)
-	// AnswerWithDB: generate SQL plan, execute, feed DB data back into AI with basePrompt, return final answer
-	AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error)
+    PlanQuery(ctx context.Context, text string) (*SQLPlan, error)
+    ExecuteQuery(ctx context.Context, plan *SQLPlan) (string, error)
+    // AnswerWithDB: generate SQL plan, execute, feed DB data back into AI with basePrompt, return final answer
+    AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error)
+    // AnswerWithDBForUser: sama seperti AnswerWithDB, tetapi terlebih dahulu mengambil konteks user berdasarkan phone,
+    // lalu mempersonalisasi jawaban dan memaksa query dibatasi pada user terkait bila tabel mendukung
+    AnswerWithDBForUser(ctx context.Context, userPhone string, text string, basePrompt string) (string, error)
 }
 
 // DatabaseService handles database operations
