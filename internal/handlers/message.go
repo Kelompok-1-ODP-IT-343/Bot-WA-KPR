@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 )
@@ -49,6 +50,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	req.Phone = strings.TrimSpace(req.Phone)
 	req.Message = strings.TrimSpace(req.Message)
+	req.Type = strings.ToLower(strings.TrimSpace(req.Type))
 	if req.Phone == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "phone is required"})
@@ -62,10 +64,21 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Send message
 	ctx := r.Context()
-	if err := h.whatsappService.SendMessage(ctx, req.Phone, req.Message); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to send message"})
-		return
+	switch req.Type {
+	case "otp":
+		// Durasi revoke mengikuti konfigurasi OTP expiry (menit → detik)
+		after := time.Duration(h.config.GetOTPExpiryMinutes()) * time.Minute
+		if err := h.whatsappService.SendMessageWithAutoRevoke(ctx, req.Phone, req.Message, after); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to send OTP message"})
+			return
+		}
+	default: // "notif" atau kosong
+		if err := h.whatsappService.SendMessage(ctx, req.Phone, req.Message); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to send message"})
+			return
+		}
 	}
 
 	response := &domain.SendMessageResponse{

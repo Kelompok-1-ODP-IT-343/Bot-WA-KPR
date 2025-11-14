@@ -20,6 +20,7 @@ type Filter struct {
 type SendMessageRequest struct {
 	Phone   string `json:"phone"`
 	Message string `json:"message"`
+	Type    string `json:"type,omitempty"`
 }
 
 // SendMessageResponse represents response after sending message
