@@ -13,18 +13,83 @@ import (
 	"google.golang.org/api/option"
 )
 
-var allowedTables = map[string]struct{}{
-	// Sesuai dengan ddl.sql
+// Pemetaan sinonim/keyword untuk membantu resolusi tabel dari teks natural
+var tableKeywords = map[string][]string{
+	"users":             {"user", "pengguna", "nasabah", "akun", "phone", "email"},
+	"roles":             {"role", "hak akses", "otorisasi"},
+	"branch_staff":      {"staff", "pegawai cabang", "petugas", "karyawan"},
+	"user_profiles":     {"profil", "bio", "pendapatan", "income", "pekerjaan", "occupation"},
+	"kpr_rates":         {"rate", "bunga", "suku bunga", "kpr rate"},
+	"kpr_applications":  {"kpr", "aplikasi", "pengajuan", "application", "apply", "status pengajuan"},
+	"approval_workflow": {"approval", "persetujuan", "workflow", "review", "status approval"},
+	"properties":        {"properti", "rumah", "agunan", "aset", "alamat"},
+}
+
+// resolveTableFromText mencoba memetakan teks pertanyaan ke nama tabel yang diizinkan
+func resolveTableFromText(text string) string {
+	lower := strings.ToLower(text)
+	// 1) Cocokkan langsung nama tabel whitelist
+	names := make([]string, 0, len(allowedTables))
+	for k := range allowedTables {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if strings.Contains(lower, n) || strings.Contains(strings.ReplaceAll(lower, "_", " "), strings.ReplaceAll(n, "_", " ")) {
+			return n
+		}
+	}
+
+	// 2) Gunakan sinonim/keyword
+	for tbl, kws := range tableKeywords {
+		for _, kw := range kws {
+			if strings.Contains(lower, kw) {
+				if _, ok := allowedTables[tbl]; ok {
+					return tbl
+				}
+			}
+		}
+	}
+
+	// 3) Heuristik sederhana: jika menyebut "approval" pilih approval_workflow; "kpr" -> kpr_applications
+	if strings.Contains(lower, "approval") {
+		if _, ok := allowedTables["approval_workflow"]; ok {
+			return "approval_workflow"
+		}
+	}
+	if strings.Contains(lower, "kpr") {
+		if _, ok := allowedTables["kpr_applications"]; ok {
+			return "kpr_applications"
+		}
+	}
+
+	// 4) Default aman: users (read-only, limit kecil)
+	if _, ok := allowedTables["users"]; ok {
+		return "users"
+	}
+	return ""
+}
+
+// Daftar default tabel yang diizinkan (baseline yang aman)
+var defaultAllowedTables = map[string]struct{}{
 	"users":             {},
 	"roles":             {},
 	"branch_staff":      {},
 	"user_profiles":     {},
 	"kpr_rates":         {},
 	"kpr_applications":  {},
-	"approval_workflow": {}, // nama tabel di DDL adalah singular
-	// direferensikan oleh kpr_applications (FK)
-	"properties": {},
+	"approval_workflow": {},
+	"properties":        {},
 }
+
+// allowedTables dimulai dari defaultAllowedTables dan bisa diperkaya dari ddl.sql
+var allowedTables = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(defaultAllowedTables))
+	for k := range defaultAllowedTables {
+		m[k] = struct{}{}
+	}
+	return m
+}()
 
 // init mencoba menyelaraskan allowedTables dengan tabel pada ddl.sql bila tersedia
 func init() {
@@ -40,11 +105,11 @@ func refreshAllowedTablesFromDDL(path string) {
 		return
 	}
 	names := parseDDLForTables(string(data))
-	if len(names) == 0 {
-		return
+	// Bangun union antara defaultAllowedTables dan tabel dari DDL
+	nt := make(map[string]struct{}, len(defaultAllowedTables)+len(names))
+	for k := range defaultAllowedTables {
+		nt[k] = struct{}{}
 	}
-	// Reset dan isi ulang
-	nt := make(map[string]struct{}, len(names))
 	for _, n := range names {
 		n = strings.TrimSpace(strings.ToLower(n))
 		if n == "" {
@@ -52,10 +117,7 @@ func refreshAllowedTablesFromDDL(path string) {
 		}
 		nt[n] = struct{}{}
 	}
-	// Pastikan tidak kosong; baru ganti
-	if len(nt) > 0 {
-		allowedTables = nt
-	}
+	allowedTables = nt
 }
 
 // parseDDLForTables mengekstrak nama tabel dari statement CREATE TABLE
@@ -141,7 +203,7 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-2.0-flash")
+	model := client.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
 	// Prompt disesuaikan dengan skema di ddl.sql (nama tabel persis)
 	prompt := "Anda adalah perencana SQL AMAN untuk PostgreSQL. Kembalikan hanya JSON dengan field: " +
 		"operation (hanya 'SELECT'), " +
@@ -178,9 +240,19 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 }
 
 func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan) (string, error) {
-	// Validate plan
-	if _, ok := allowedTables[strings.ToLower(plan.Table)]; !ok || strings.ToUpper(plan.Operation) != "SELECT" {
-		return "", fmt.Errorf("operation not allowed: only SELECT from %s", allowedTablesList())
+	// Validasi plan, dan coba lunakkan dengan resolusi tabel
+	tbl := strings.ToLower(strings.TrimSpace(plan.Table))
+	if _, ok := allowedTables[tbl]; !ok {
+		// Coba map ke tabel yang diizinkan
+		mapped := resolveTableFromText(tbl)
+		if mapped == "" {
+			return "", fmt.Errorf("Hanya SELECT pada tabel yang diizinkan. Tabel tersedia: %s", allowedTablesList())
+		}
+		plan.Table = mapped
+		tbl = mapped
+	}
+	if strings.ToUpper(strings.TrimSpace(plan.Operation)) != "SELECT" {
+		return "", fmt.Errorf("Hanya operasi SELECT yang diizinkan.")
 	}
 
 	query, args := a.buildSafeSelect(plan)
@@ -200,22 +272,25 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error) {
 	// Generate plan (uses model if geminiKey set, else naive)
 	plan, err := a.PlanQuery(ctx, text)
+	var dbContext string
 	if err != nil {
-		return "", fmt.Errorf("plan error: %w", err)
+		// Lunakkan: fallback tanpa DB
+		dbContext = ""
+	} else {
+		// Execute query, dengan fallback bila DB tidak tersedia / plan tidak valid
+		dbContext, err = a.ExecuteQuery(ctx, plan)
+		if err != nil {
+			// Jika database not available atau tabel/operasi tidak diizinkan, jangan hard fail
+			dbContext = ""
+		}
 	}
 
-	// Execute query
-	dbContext, err := a.ExecuteQuery(ctx, plan)
-	if err != nil {
-		return "", fmt.Errorf("query error: %w", err)
-	}
-
-	// If no AI key, fallback to DB context
+	// Jika tidak ada AI key, fallback ke konteks DB bila ada; jika tidak, beri jawaban default
 	if strings.TrimSpace(a.geminiKey) == "" {
 		if strings.TrimSpace(dbContext) != "" {
 			return dbContext, nil
 		}
-		return "AI tidak aktif dan tidak ada konteks data.", nil
+		return "Tidak ada jawaban berbasis data karena AI/DB tidak tersedia.", nil
 	}
 
 	client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
@@ -224,7 +299,7 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-2.0-flash")
+	model := client.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
 
 	var sb strings.Builder
 	if basePrompt != "" {
@@ -239,6 +314,7 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 	sb.WriteString("[PERTANYAAN USER]: ")
 	sb.WriteString(text)
 
+	// Selalu sertakan pengantar persona Tanti AI di awal jawaban
 	resp, err := model.GenerateContent(ctx, ai.Text(sb.String()))
 	if err != nil {
 		return "", fmt.Errorf("gemini: %w", err)
@@ -259,7 +335,13 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 		}
 		return "Tidak ada jawaban.", nil
 	}
-	return out, nil
+	// Prefix pengantar Tanti AI bila belum ada
+	intro := "Halo, saya Tanti AI — TANya dan TerIntegrasi AI BNI.\n"
+	low := strings.ToLower(strings.TrimSpace(out))
+	if strings.HasPrefix(low, "halo, saya tanti ai") {
+		return out, nil
+	}
+	return intro + out, nil
 }
 
 // AnswerWithDBForUser: ambil konteks user berdasarkan phone, batasi rencana query ke user terkait bila mungkin,
@@ -337,7 +419,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-2.0-flash")
+	model := client.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
 
 	var sb strings.Builder
 	if basePrompt != "" {
@@ -455,22 +537,11 @@ func nullStr(s sql.NullString) string {
 }
 
 func (a *AIQueryService) naivePlan(text string) (*domain.SQLPlan, error) {
-	lower := strings.ToLower(text)
-	var tbl string
-	// pilih tabel pertama yang disebutkan dan masuk whitelist
-	names := make([]string, 0, len(allowedTables))
-	for k := range allowedTables {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		if strings.Contains(lower, n) {
-			tbl = n
-			break
-		}
-	}
+	// Gunakan resolver sinonim untuk memilih tabel
+	tbl := resolveTableFromText(text)
 	if tbl == "" {
-		return nil, fmt.Errorf("table not allowed")
+		// Tetap kembalikan plan default, agar alur tidak gagal total
+		tbl = "users"
 	}
 
 	return &domain.SQLPlan{

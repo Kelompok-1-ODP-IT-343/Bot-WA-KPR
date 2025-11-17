@@ -12,15 +12,15 @@ import (
 )
 
 type BotHandler struct {
-    qa       domain.KPRQAService
-    whatsapp domain.WhatsAppService
+	qa       domain.KPRQAService
+	whatsapp domain.WhatsAppService
 }
 
 func NewBotHandler(qa domain.KPRQAService, whatsapp domain.WhatsAppService) *BotHandler {
-    return &BotHandler{
-        qa:       qa,
-        whatsapp: whatsapp,
-    }
+	return &BotHandler{
+		qa:       qa,
+		whatsapp: whatsapp,
+	}
 }
 
 func (h *BotHandler) HandleMessage(evt interface{}) {
@@ -51,17 +51,24 @@ func (h *BotHandler) HandleMessage(evt interface{}) {
 }
 
 func (h *BotHandler) handleQueryRequest(ctx context.Context, phone, text string) {
-    result, err := h.qa.Ask(ctx, text)
-    if err != nil {
-        h.sendReply(ctx, phone, fmt.Sprintf("AI error: %v", err))
-        return
-    }
+	result, err := h.qa.Ask(ctx, text)
+	if err != nil {
+		h.sendReply(ctx, phone, fmt.Sprintf("AI error: %v", err))
+		return
+	}
 
-    h.sendReply(ctx, phone, result)
+	h.sendReply(ctx, phone, result)
 }
 
 func (h *BotHandler) sendReply(ctx context.Context, phone, message string) {
-	if err := h.whatsapp.SendMessage(ctx, phone, message); err != nil {
+	// Prefix setiap chat dengan pengantar Tanti AI
+	intro := "-- Tanti AI — TANya dan TerIntegrasi Satu Atap by BNI. --\n"
+	// Hindari duplikasi jika sudah ada pengantar serupa
+	prefixed := message
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "halo, saya tanti ai") {
+		prefixed = intro + message
+	}
+	if err := h.whatsapp.SendMessage(ctx, phone, prefixed); err != nil {
 		log.Printf("Failed to send reply: %v", err)
 	}
 }

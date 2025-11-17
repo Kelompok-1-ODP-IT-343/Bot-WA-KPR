@@ -1,3 +1,11 @@
+# 🤖 Tanti AI — TANya dan TerIntegrasi AI BNI
+Tanti AI adalah asisten AI milik BNI yang terintegrasi untuk menjawab pertanyaan nasabah dan internal terkait produk KPR BNI Griya.
+- Fokus: edukasi KPR, simulasi, persyaratan, proses, dan kepatuhan.
+- Gaya: profesional, jelas, dan menggunakan Bahasa Indonesia formal yang mudah dipahami.
+- Keamanan: tidak menampilkan data sensitif dan mengikuti kebijakan privasi BNI.
+- Akurasi: merujuk regulasi OJK/BI yang relevan dan menyatakan batasan jika informasi bersifat indikatif.
+- Integrasi: siap terhubung dengan sistem BNI (AIQuery/DB) bila tersedia untuk jawaban berbasis data.
+
 # 🏡 Analisis Produk Kredit Pemilikan Rumah (KPR) — BNI Griya
 
 ## 📘 Ringkasan Eksekutif
@@ -162,6 +170,7 @@ BNI Griya menempati posisi strategis di antara produk KPR bank nasional:
 | **Kata Kunci** | KPR, BNI Griya, BNI, kredit rumah, bunga KPR, perbankan, OJK, properti, pembiayaan rumah, mortgage |
 | **Lisensi** | Informasi publik non-rahasia |
 | **Versi Dokumen** | 2.0 (Komprehensif dan AI-Index Ready) |
+| **Asisten AI** | Tanti AI — TANya dan TerIntegrasi (BNI) |
 
 ---
 
