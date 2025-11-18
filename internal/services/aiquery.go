@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 	ai "github.com/google/generative-ai-go/genai"
@@ -19,8 +20,8 @@ var tableKeywords = map[string][]string{
 	"roles":             {"role", "hak akses", "otorisasi"},
 	"branch_staff":      {"staff", "pegawai cabang", "petugas", "karyawan"},
 	"user_profiles":     {"profil", "bio", "pendapatan", "income", "pekerjaan", "occupation"},
-	"kpr_rates":         {"rate", "bunga", "suku bunga", "kpr rate"},
-	"kpr_applications":  {"kpr", "aplikasi", "pengajuan", "application", "apply", "status pengajuan"},
+	"kpr_rates":         {"rate", "bunga", "suku bunga", "kpr rate", "bunga tetap", "fixed", "floating", "bunga mengambang", "promo", "promosi", "ltv", "loan to value", "tenor", "jangka waktu", "plafon", "down payment", "dp", "prime lending rate"},
+	"kpr_applications":  {"kpr", "aplikasi", "pengajuan", "application", "apply", "status pengajuan", "report", "laporan", "rekap", "ringkasan", "statistik", "summary"},
 	"approval_workflow": {"approval", "persetujuan", "workflow", "review", "status approval"},
 	"properties":        {"properti", "rumah", "agunan", "aset", "alamat"},
 }
@@ -58,6 +59,12 @@ func resolveTableFromText(text string) string {
 		}
 	}
 	if strings.Contains(lower, "kpr") {
+		if _, ok := allowedTables["kpr_applications"]; ok {
+			return "kpr_applications"
+		}
+	}
+	// 3b) Heuristik report/laporan/rekap diarahkan ke kpr_applications
+	if strings.Contains(lower, "report") || strings.Contains(lower, "laporan") || strings.Contains(lower, "rekap") || strings.Contains(lower, "ringkasan") || strings.Contains(lower, "statistik") || strings.Contains(lower, "summary") {
 		if _, ok := allowedTables["kpr_applications"]; ok {
 			return "kpr_applications"
 		}
@@ -182,6 +189,53 @@ func allowedTablesList() string {
 type AIQueryService struct {
 	db        domain.DatabaseService
 	geminiKey string
+	mem       *MemoryStore
+}
+
+// MemoryStore menyimpan status ringan per nomor pengguna (registration, role, dll.)
+type MemoryStore struct {
+	mu    sync.RWMutex
+	users map[string]*UserMemory
+}
+
+type UserMemory struct {
+	Phone              string
+	Registered         bool
+	Role               string // "guest", "nasabah", "admin", dll.
+	WarnedUnregistered bool   // sudah pernah diberi peringatan privasi
+}
+
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{users: make(map[string]*UserMemory)}
+}
+
+func (m *MemoryStore) Get(phone string) *UserMemory {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.users[phone]
+}
+
+func (m *MemoryStore) Set(mem *UserMemory) {
+	if mem == nil || strings.TrimSpace(mem.Phone) == "" {
+		return
+	}
+	m.mu.Lock()
+	m.users[mem.Phone] = mem
+	m.mu.Unlock()
+}
+
+func (m *MemoryStore) Update(phone string, fn func(*UserMemory)) {
+	if strings.TrimSpace(phone) == "" {
+		return
+	}
+	m.mu.Lock()
+	um, ok := m.users[phone]
+	if !ok {
+		um = &UserMemory{Phone: phone}
+		m.users[phone] = um
+	}
+	fn(um)
+	m.mu.Unlock()
 }
 
 // -------------------------
@@ -284,6 +338,7 @@ func NewAIQueryService(db domain.DatabaseService, geminiKey string) domain.AIQue
 	return &AIQueryService{
 		db:        db,
 		geminiKey: geminiKey,
+		mem:       NewMemoryStore(),
 	}
 }
 
@@ -452,26 +507,45 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 // AnswerWithDBForUser: ambil konteks user berdasarkan phone, batasi rencana query ke user terkait bila mungkin,
 // gabungkan konteks user + hasil DB, lalu minta AI merumuskan jawaban akhir.
 func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone string, text string, basePrompt string) (string, error) {
-	userID, userCtx, err := a.getUserContext(ctx, userPhone)
-	registered := err == nil && userID > 0
-	if err != nil {
-		// Info minimal untuk model
-		userCtx = fmt.Sprintf("User tidak ditemukan untuk phone=%s", userPhone)
-	}
-
-	// Generate plan
-	plan, err := a.PlanQuery(ctx, text)
-	if err != nil {
-		return "", fmt.Errorf("plan error: %w", err)
+	// Ambil dari memory bila tersedia untuk menghindari query berulang
+	mem := a.mem.Get(userPhone)
+	var userID int
+	var userCtx string
+	var err error
+	registered := mem != nil && mem.Registered
+	role := "guest"
+	if registered {
+		role = mem.Role
+	} else {
+		userID, userCtx, err = a.getUserContext(ctx, userPhone)
+		if err == nil && userID > 0 {
+			registered = true
+			role = "nasabah"
+			a.mem.Set(&UserMemory{Phone: userPhone, Registered: true, Role: role})
+		} else {
+			a.mem.Set(&UserMemory{Phone: userPhone, Registered: false, Role: "guest"})
+			userCtx = fmt.Sprintf("User tidak ditemukan untuk phone=%s", userPhone)
+		}
 	}
 
 	// Jika nomor tidak terdaftar, blok akses data: jangan eksekusi DB
 	if !registered {
-		// Jika AI tidak aktif, kembalikan pesan ramah
+		// Hindari peringatan berulang: gunakan flag memory WarnedUnregistered
+		um := a.mem.Get(userPhone)
+		alreadyWarned := um != nil && um.WarnedUnregistered
+		if um != nil && !um.WarnedUnregistered {
+			a.mem.Update(userPhone, func(m *UserMemory) { m.WarnedUnregistered = true })
+		}
+
 		if strings.TrimSpace(a.geminiKey) == "" {
+			if alreadyWarned {
+				// Jawab umum tanpa peringatan berulang
+				return "Silakan ajukan pertanyaan seputar KPR. Akses data pribadi tidak tersedia untuk nomor yang belum terdaftar.", nil
+			}
 			return "Nomor Anda belum terdaftar sebagai nasabah. Anda boleh bertanya seputar KPR, namun permintaan akses data tidak dapat diproses.", nil
 		}
-		// Jawab pertanyaan tanpa konteks data, sertakan catatan privasi
+
+		// Jawab pertanyaan umum KPR tanpa konteks data; hanya beri peringatan sekali
 		client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
 		if err != nil {
 			return "", fmt.Errorf("gemini client: %w", err)
@@ -488,7 +562,9 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 			sb.WriteString(userCtx)
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString("[KONTEKS PRIVASI]: Nomor belum terdaftar; permintaan akses data ditolak. Jawab pertanyaan umum KPR tanpa data pribadi.\n\n")
+		if !alreadyWarned {
+			sb.WriteString("[KONTEKS PRIVASI]: Nomor belum terdaftar; permintaan akses data ditolak. Jawab pertanyaan umum KPR tanpa data pribadi.\n\n")
+		}
 		sb.WriteString("[PERTANYAAN USER]: ")
 		sb.WriteString(text)
 		resp, err := model.GenerateContent(ctx, ai.Text(sb.String()))
@@ -504,9 +580,59 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 			}
 		}
 		if strings.TrimSpace(out) == "" {
+			if alreadyWarned {
+				return "Silakan ajukan pertanyaan seputar KPR. Akses data pribadi tidak tersedia untuk nomor yang belum terdaftar.", nil
+			}
 			return "Anda boleh bertanya seputar KPR, namun akses data tidak tersedia untuk nomor yang belum terdaftar.", nil
 		}
 		return out, nil
+	}
+
+	// Untuk pengguna terdaftar, coba buat rencana. Jika gagal, fallback ke naive plan.
+	plan, err := a.PlanQuery(ctx, text)
+	if err != nil {
+		if np, nerr := a.naivePlan(text); nerr == nil {
+			plan = np
+		} else {
+			if strings.TrimSpace(a.geminiKey) == "" {
+				return "Silakan ajukan pertanyaan seputar KPR. Untuk pertanyaan data, kami akan menggunakan filter akun Anda.", nil
+			}
+			client, cerr := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
+			if cerr != nil {
+				return "", fmt.Errorf("gemini client: %w", cerr)
+			}
+			defer client.Close()
+			model := client.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
+			var sb strings.Builder
+			if basePrompt != "" {
+				sb.WriteString(basePrompt)
+				sb.WriteString("\n\n")
+			}
+			if strings.TrimSpace(userCtx) != "" {
+				sb.WriteString("[KONTEKS USER]:\n")
+				sb.WriteString(userCtx)
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString("[CATATAN]: Pertanyaan Anda tidak memerlukan akses data.\n\n")
+			sb.WriteString("[PERTANYAAN USER]: ")
+			sb.WriteString(text)
+			resp, gerr := model.GenerateContent(ctx, ai.Text(sb.String()))
+			if gerr != nil {
+				return "", fmt.Errorf("gemini: %w", gerr)
+			}
+			var out string
+			for _, c := range resp.Candidates {
+				for _, p := range c.Content.Parts {
+					if t, ok := p.(ai.Text); ok {
+						out += string(t)
+					}
+				}
+			}
+			if strings.TrimSpace(out) == "" {
+				return "Pertanyaan umum diterima. Tidak ada akses data yang diperlukan.", nil
+			}
+			return out, nil
+		}
 	}
 
 	// Personalisasi: injeksikan filter user bila tabel mendukung
@@ -522,6 +648,8 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		}
 		plan.Filters = append(plan.Filters, domain.Filter{Column: column, Op: "=", Value: value})
 	}
+	// Role admin tetap tidak boleh akses data raw; perlakukan sama seperti nasabah
+	// sehingga tidak ada pengecualian khusus di sini.
 	switch tbl {
 	case "user_profiles", "kpr_applications", "branch_staff":
 		addFilter("user_id", fmt.Sprintf("%d", userID))
