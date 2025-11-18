@@ -9,8 +9,8 @@ import (
 )
 
 type KPRQAService struct {
-	aiQuery    domain.AIQueryService
-	promptPath string
+    aiQuery    domain.AIQueryService
+    promptPath string
 }
 
 func NewKPRQAService(aiQuery domain.AIQueryService, geminiKey, promptPath string) domain.KPRQAService {
@@ -24,11 +24,20 @@ func NewKPRQAService(aiQuery domain.AIQueryService, geminiKey, promptPath string
 // Jika text mengandung intent query ke tabel whitelist, akan dicoba eksekusi SELECT aman
 // dan hasilnya dijadikan konteks untuk jawaban KPR.
 func (s *KPRQAService) Ask(ctx context.Context, text string) (string, error) {
-	basePrompt := s.readPromptFile()
-	if s.aiQuery == nil {
-		return "", fmt.Errorf("AIQueryService not configured")
-	}
-	return s.aiQuery.AnswerWithDB(ctx, text, basePrompt)
+    basePrompt := s.readPromptFile()
+    if s.aiQuery == nil {
+        return "", fmt.Errorf("AIQueryService not configured")
+    }
+    return s.aiQuery.AnswerWithDB(ctx, text, basePrompt)
+}
+
+// AskForUser: gunakan AnswerWithDBForUser agar akses data digating berdasarkan nomor pengguna
+func (s *KPRQAService) AskForUser(ctx context.Context, phone, text string) (string, error) {
+    basePrompt := s.readPromptFile()
+    if s.aiQuery == nil {
+        return "", fmt.Errorf("AIQueryService not configured")
+    }
+    return s.aiQuery.AnswerWithDBForUser(ctx, phone, text, basePrompt)
 }
 
 func (s *KPRQAService) readPromptFile() string {

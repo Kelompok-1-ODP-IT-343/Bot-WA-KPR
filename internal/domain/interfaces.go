@@ -52,5 +52,7 @@ type OTPService interface {
 
 // KPRQAService handles KPR Q&A with optional DB context
 type KPRQAService interface {
-	Ask(ctx context.Context, text string) (string, error)
+    Ask(ctx context.Context, text string) (string, error)
+    // AskForUser: sama seperti Ask, tetapi menyertakan nomor pengguna untuk gating akses data
+    AskForUser(ctx context.Context, phone, text string) (string, error)
 }

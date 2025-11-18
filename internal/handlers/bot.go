@@ -51,7 +51,8 @@ func (h *BotHandler) HandleMessage(evt interface{}) {
 }
 
 func (h *BotHandler) handleQueryRequest(ctx context.Context, phone, text string) {
-	result, err := h.qa.Ask(ctx, text)
+	// Gunakan AskForUser agar akses data digating berdasarkan nomor pengirim
+	result, err := h.qa.AskForUser(ctx, phone, text)
 	if err != nil {
 		h.sendReply(ctx, phone, fmt.Sprintf("AI error: %v", err))
 		return
@@ -62,11 +63,10 @@ func (h *BotHandler) handleQueryRequest(ctx context.Context, phone, text string)
 
 func (h *BotHandler) sendReply(ctx context.Context, phone, message string) {
 	// Prefix setiap chat dengan pengantar Tanti AI
-	intro := "-- Tanti AI — TANya dan TerIntegrasi Satu Atap by BNI. --\n"
 	// Hindari duplikasi jika sudah ada pengantar serupa
 	prefixed := message
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "halo, saya tanti ai") {
-		prefixed = intro + message
+		prefixed = "Tanti AI — " + message
 	}
 	if err := h.whatsapp.SendMessage(ctx, phone, prefixed); err != nil {
 		log.Printf("Failed to send reply: %v", err)
