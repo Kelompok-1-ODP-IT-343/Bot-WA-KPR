@@ -11,7 +11,6 @@ import (
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 )
 
-// OTPEntry represents an OTP entry with expiry
 type OTPEntry struct {
 	Code      string
 	Phone     string
