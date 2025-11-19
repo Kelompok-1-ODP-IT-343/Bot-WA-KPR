@@ -35,6 +35,9 @@ RUN useradd -u 10001 -m appuser \
 
 WORKDIR /app
 COPY --from=builder /out/bot /app/bot
+COPY --from=builder /src/ddl.sql /app/ddl.sql
+COPY --from=builder /src/sql_audit.jsonl /app/sql_audit.jsonl
+COPY --from=builder /src/prompt.txt /app/prompt.txt
 
 # ENV default (override via env di deploy/CI)
 ENV HTTP_ADDR=":8080" \
