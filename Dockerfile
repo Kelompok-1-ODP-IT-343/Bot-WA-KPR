@@ -39,7 +39,6 @@ COPY --from=builder /src/ddl.sql /app/ddl.sql
 COPY --from=builder /src/sql_audit.jsonl /app/sql_audit.jsonl
 COPY --from=builder /src/kpr_prompt.txt /app/kpr_prompt.txt
 RUN [ -f /app/sql_audit.jsonl ] || touch /app/sql_audit.jsonl
-
 # ENV default (override via env di deploy/CI)
 ENV HTTP_ADDR=":8080" \
     WHATSAPP_STORE_PATH="/data/wa-store/whatsmeow.db" \
