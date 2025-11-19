@@ -117,7 +117,7 @@ jobs:
           sed -i "s|image: maulanabn99/bot-wa-kpr:.*|image: maulanabn99/bot-wa-kpr:sha-${GITHUB_SHA}|g" deployment.yaml
 
       - name: Commit and Push Changes
-      - run: |
+        run: |
           cd infra-management
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
