@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: aquasecurity/trivy-action@0.24.0
         with:
-          image-ref: maulanabn99/bot-wa-kpr:sha-4cecaa273464c8cb411d0208fdefddb23e8bee4c
+          image-ref: maulanabn99/bot-wa-kpr:sha-dc1e179
           format: json
           vuln-type: os,library
           severity: CRITICAL
@@ -87,7 +87,7 @@ jobs:
       - run: |
           echo "## Trivy Vulnerability Scan Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Image: maulanabn99/bot-wa-kpr:sha-4cecaa273464c8cb411d0208fdefddb23e8bee4c" >> $GITHUB_STEP_SUMMARY
+          echo "Image: maulanabn99/bot-wa-kpr:sha-dc1e179" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           CRIT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
           echo "- Critical: $CRIT" >> $GITHUB_STEP_SUMMARY
@@ -115,7 +115,7 @@ jobs:
       - name: Update Bot Wa Satu Atap image tag
         run: |
           cd infra-management/apps/bot-wa-satu-atap
-          sed -i "s|image: maulanabn99/bot-wa-kpr:.*|image: maulanabn99/bot-wa-kpr:sha-${GITHUB_SHA}|g" deployment.yaml
+          sed -i "s|image: maulanabn99/bot-wa-kpr:.*|image: maulanabn99/bot-wa-kpr:sha-${GITHUB_SHA::7}|g" deployment.yaml
 
       - name: Commit and Push Changes
         run: |
@@ -123,5 +123,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Update bot-wa-satu-atap image to sha-${GITHUB_SHA}"
+          git commit -m "Update bot-wa-satu-atap image to sha-${GITHUB_SHA::7}"
           git push origin main
