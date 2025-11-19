@@ -1,12 +1,13 @@
 package config
 
 import (
-	"fmt"
-	"os"
-	"strconv"
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
 
-	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
-	"github.com/joho/godotenv"
+    "github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
+    "github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -17,11 +18,13 @@ type Config struct {
     HTTPAddr          string
     OTPExpiryMinutes  int
     KPRPromptPath     string
+    GeminiCanSeeData  bool
+    SQLAuditPath      string
 }
 
 func NewConfig() domain.ConfigService {
-	// Load .env if present
-	_ = godotenv.Load()
+    // Load .env if present
+    _ = godotenv.Load()
 
 	storePath := os.Getenv("WHATSAPP_STORE_PATH")
 	if storePath == "" {
@@ -45,14 +48,32 @@ func NewConfig() domain.ConfigService {
         promptPath = "kpr_prompt.txt"
     }
 
-	return &Config{
-		DatabaseURL:       os.Getenv("DATABASE_URL"),
-		WhatsAppStorePath: storePath,
-		GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
-		APIKey:            os.Getenv("API_KEY"),
+    // Privacy flag: control whether Gemini can see DB data strings in prompt
+    // Default: false (Gemini should NOT see raw data strings)
+    geminiCanSeeData := false
+    if v := os.Getenv("GEMINI_CAN_SEE_DATA"); v != "" {
+        // Accept common truthy values: true/1/yes/on
+        switch strings.ToLower(strings.TrimSpace(v)) {
+        case "true", "1", "yes", "on":
+            geminiCanSeeData = true
+        }
+    }
+
+    auditPath := os.Getenv("SQL_AUDIT_PATH")
+    if strings.TrimSpace(auditPath) == "" {
+        auditPath = "sql_audit.jsonl"
+    }
+
+    return &Config{
+        DatabaseURL:       os.Getenv("DATABASE_URL"),
+        WhatsAppStorePath: storePath,
+        GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
+        APIKey:            os.Getenv("API_KEY"),
         HTTPAddr:          httpAddr,
         OTPExpiryMinutes:  otpExpiryMinutes,
         KPRPromptPath:     promptPath,
+        GeminiCanSeeData:  geminiCanSeeData,
+        SQLAuditPath:      auditPath,
     }
 }
 
@@ -82,6 +103,14 @@ func (c *Config) GetOTPExpiryMinutes() int {
 
 func (c *Config) GetKPRPromptPath() string {
     return c.KPRPromptPath
+}
+
+func (c *Config) GetGeminiCanSeeData() bool {
+    return c.GeminiCanSeeData
+}
+
+func (c *Config) GetSQLAuditPath() string {
+    return c.SQLAuditPath
 }
 
 func (c *Config) Validate() error {

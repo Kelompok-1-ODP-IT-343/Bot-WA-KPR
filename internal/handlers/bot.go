@@ -62,13 +62,7 @@ func (h *BotHandler) handleQueryRequest(ctx context.Context, phone, text string)
 }
 
 func (h *BotHandler) sendReply(ctx context.Context, phone, message string) {
-	// Prefix setiap chat dengan pengantar Tanti AI
-	// Hindari duplikasi jika sudah ada pengantar serupa
-	prefixed := message
-	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "halo, saya tanti ai") {
-		prefixed = "Tanti AI — " + message
-	}
-	if err := h.whatsapp.SendMessage(ctx, phone, prefixed); err != nil {
-		log.Printf("Failed to send reply: %v", err)
-	}
+    if err := h.whatsapp.SendMessage(ctx, phone, message); err != nil {
+        log.Printf("Failed to send reply: %v", err)
+    }
 }

@@ -34,13 +34,15 @@ type DatabaseService interface {
 
 // ConfigService handles application configuration
 type ConfigService interface {
-	GetDatabaseURL() string
-	GetWhatsAppStorePath() string
-	GetGeminiAPIKey() string
-	GetAPIKey() string
-	GetHTTPAddr() string
-	GetOTPExpiryMinutes() int
-	GetKPRPromptPath() string
+    GetDatabaseURL() string
+    GetWhatsAppStorePath() string
+    GetGeminiAPIKey() string
+    GetAPIKey() string
+    GetHTTPAddr() string
+    GetOTPExpiryMinutes() int
+    GetKPRPromptPath() string
+    GetGeminiCanSeeData() bool
+    GetSQLAuditPath() string
 }
 
 // OTPService handles OTP generation, validation, and expiry

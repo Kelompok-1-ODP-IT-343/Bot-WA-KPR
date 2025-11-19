@@ -37,8 +37,8 @@ func main() {
 
 	log.Println("WhatsApp bot running")
 
-    // Initialize AI Query service (untuk SELECT aman)
-    aiQueryService := services.NewAIQueryService(dbService, cfg.GetGeminiAPIKey())
+    // Initialize AI Query service (untuk SELECT aman) dengan privasi Gemini
+    aiQueryService := services.NewAIQueryService(dbService, cfg.GetGeminiAPIKey(), cfg.GetGeminiCanSeeData(), cfg.GetSQLAuditPath())
 
     // Initialize KPR QA service (gabung prompt txt + input user)
     qaService := services.NewKPRQAService(aiQueryService, cfg.GetGeminiAPIKey(), cfg.GetKPRPromptPath())

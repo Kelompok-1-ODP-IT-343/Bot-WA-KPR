@@ -48,6 +48,11 @@ GEMINI_API_KEY=your_gemini_api_key
 # REST API
 API_KEY=your_secure_api_key
 HTTP_ADDR=:8080
+
+# Privasi AI (opsional)
+# Jika diset ke "true", Gemini boleh menerima konteks data dari DB.
+# Default: false (Gemini TIDAK menerima data mentah; data hanya dirender oleh sistem)
+GEMINI_CAN_SEE_DATA=false
 ```
 
 ## Menjalankan Aplikasi
@@ -116,6 +121,7 @@ Response:
 - Whitelist tabel: `users`, `kpr_applications`, `approval_workflows`
 - Prepared statements untuk mencegah SQL injection
 - API key authentication untuk REST endpoints
+- Privasi AI: saat `GEMINI_CAN_SEE_DATA=false`, data hasil DB TIDAK dikirim ke AI. Jawaban AI dibuat tanpa melihat data mentah, dan ringkasan data (dengan masking) dirender oleh sistem secara terpisah.
 
 ## Testing
 
