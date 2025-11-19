@@ -39,6 +39,7 @@ func main() {
 
     // Initialize AI Query service (untuk SELECT aman) dengan privasi Gemini
     aiQueryService := services.NewAIQueryService(dbService, cfg.GetGeminiAPIKey(), cfg.GetGeminiCanSeeData(), cfg.GetSQLAuditPath())
+    services.RefreshAllowedColumnsFromDDL("ddl.sql")
 
     // Initialize KPR QA service (gabung prompt txt + input user)
     qaService := services.NewKPRQAService(aiQueryService, cfg.GetGeminiAPIKey(), cfg.GetKPRPromptPath())

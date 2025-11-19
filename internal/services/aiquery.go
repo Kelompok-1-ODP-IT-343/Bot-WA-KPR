@@ -1,19 +1,20 @@
 package services
 
 import (
-    "context"
-    "database/sql"
-    "encoding/json"
-    "fmt"
-    "os"
-    "sort"
-    "strings"
-    "sync"
-    "time"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 
-    "github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
-    ai "github.com/google/generative-ai-go/genai"
-    "google.golang.org/api/option"
+	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
+	ai "github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/option"
 )
 
 // Pemetaan sinonim/keyword untuk membantu resolusi tabel dari teks natural
@@ -192,6 +193,8 @@ func refreshAllowedColumnsFromDDL(path string) {
 	tableColumns = parseDDLForColumns(string(data))
 }
 
+func RefreshAllowedColumnsFromDDL(path string) { refreshAllowedColumnsFromDDL(path) }
+
 // parseDDLForColumns mengekstrak kolom pada setiap CREATE TABLE (hingga tanda kurung penutup yang mencakup definisi kolom)
 func parseDDLForColumns(ddl string) map[string][]string {
 	res := map[string][]string{}
@@ -313,11 +316,11 @@ func allowedTablesList() string {
 }
 
 type AIQueryService struct {
-    db               domain.DatabaseService
-    geminiKey        string
-    mem              *MemoryStore
-    geminiCanSeeData bool
-    auditPath        string
+	db               domain.DatabaseService
+	geminiKey        string
+	mem              *MemoryStore
+	geminiCanSeeData bool
+	auditPath        string
 }
 
 // MemoryStore menyimpan status ringan per nomor pengguna (registration, role, dll.)
@@ -462,7 +465,7 @@ func whitelistSafeColumns(p *domain.SQLPlan) {
 	case "user_profiles":
 		safe = map[string]struct{}{"id": {}, "user_id": {}, "full_name": {}, "occupation": {}, "city": {}, "province": {}}
 	case "kpr_applications":
-		safe = map[string]struct{}{"id": {}, "application_number": {}, "status": {}, "submitted_at": {}, "approved_at": {}, "rejected_at": {}}
+		safe = map[string]struct{}{"id": {}, "application_number": {}, "status": {}, "submitted_at": {}, "approved_at": {}, "rejected_at": {}, "loan_amount": {}, "down_payment": {}, "property_value": {}, "ltv_ratio": {}}
 	case "approval_workflow":
 		safe = map[string]struct{}{"id": {}, "application_id": {}, "stage": {}, "status": {}, "assigned_to": {}, "due_date": {}}
 	case "branch_staff":
@@ -487,6 +490,84 @@ func whitelistSafeColumns(p *domain.SQLPlan) {
 	p.Columns = filtered
 }
 
+func validateFilterColumns(p *domain.SQLPlan) {
+	if p == nil {
+		return
+	}
+	tbl := strings.ToLower(strings.TrimSpace(p.Table))
+	cols, _ := tableColumns[tbl]
+	allowed := map[string]struct{}{}
+	for _, c := range cols {
+		allowed[strings.ToLower(strings.TrimSpace(c))] = struct{}{}
+	}
+	usersCols := map[string]struct{}{}
+	if uc, ok := tableColumns["users"]; ok {
+		for _, c := range uc {
+			usersCols[strings.ToLower(strings.TrimSpace(c))] = struct{}{}
+		}
+	} else {
+		for _, c := range []string{"id", "username", "email", "phone", "status", "created_at"} {
+			usersCols[c] = struct{}{}
+		}
+	}
+	nf := make([]domain.Filter, 0, len(p.Filters))
+	for _, f := range p.Filters {
+		lc := strings.ToLower(strings.TrimSpace(f.Column))
+		if _, ok := allowed[lc]; ok {
+			nf = append(nf, f)
+			continue
+		}
+		if canJoinUsers(tbl) {
+			if _, ok := usersCols[lc]; ok {
+				nf = append(nf, f)
+				continue
+			}
+		}
+	}
+	p.Filters = nf
+}
+
+func isColumnIn(table, col string) bool {
+	cols, ok := tableColumns[strings.ToLower(strings.TrimSpace(table))]
+	if !ok {
+		return false
+	}
+	lc := strings.ToLower(strings.TrimSpace(col))
+	for _, c := range cols {
+		if strings.EqualFold(c, lc) {
+			return true
+		}
+	}
+	return false
+}
+
+func isUsersColumn(col string) bool {
+	if uc, ok := tableColumns["users"]; ok {
+		lc := strings.ToLower(strings.TrimSpace(col))
+		for _, c := range uc {
+			if strings.EqualFold(c, lc) {
+				return true
+			}
+		}
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(col)) {
+	case "id", "username", "email", "phone", "status", "created_at":
+		return true
+	default:
+		return false
+	}
+}
+
+func canJoinUsers(tbl string) bool {
+	switch strings.ToLower(strings.TrimSpace(tbl)) {
+	case "kpr_applications", "user_profiles", "branch_staff", "approval_workflow":
+		return true
+	default:
+		return false
+	}
+}
+
 func sanitizePlanForPrivacy(p *domain.SQLPlan) error {
 	if p == nil {
 		return fmt.Errorf("rencana query tidak tersedia")
@@ -499,6 +580,7 @@ func sanitizePlanForPrivacy(p *domain.SQLPlan) error {
 	// Batasi limit global yang aman
 	capLimit(p, 100)
 
+	validateFilterColumns(p)
 	if isSensitiveTable(tbl) {
 		if !hasRestrictiveFilter(p) {
 			return fmt.Errorf("Akses massal ke data pengguna dibatasi. Sebutkan filter spesifik (misal: id, user_id, phone, atau email).")
@@ -539,13 +621,13 @@ func isDataIntent(text string) bool {
 }
 
 func NewAIQueryService(db domain.DatabaseService, geminiKey string, geminiCanSeeData bool, auditPath string) domain.AIQueryService {
-    return &AIQueryService{
-        db:               db,
-        geminiKey:        geminiKey,
-        mem:              NewMemoryStore(),
-        geminiCanSeeData: geminiCanSeeData,
-        auditPath:        auditPath,
-    }
+	return &AIQueryService{
+		db:               db,
+		geminiKey:        geminiKey,
+		mem:              NewMemoryStore(),
+		geminiCanSeeData: geminiCanSeeData,
+		auditPath:        auditPath,
+	}
 }
 
 func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQLPlan, error) {
@@ -569,7 +651,7 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 		"filters (opsional array dari objek {column, op='=', value}), " +
 		"limit (opsional int; default 20). " +
 		"Aturan keras: (1) HANYA tabel whitelist di atas; gunakan nama persis sesuai DDL. " +
-		"(2) JANGAN gunakan JOIN, subquery, agregasi, ORDER BY, atau GROUP BY. " +
+		"(2) JOIN terbatas DIIZINKAN hanya ke tabel 'users' untuk keperluan filter (contoh: filter berdasarkan 'phone' atau 'email'). Hindari JOIN berantai dan jangan gunakan subquery, agregasi, ORDER BY, atau GROUP BY. " +
 		"(3) Filters hanya boleh memakai operator '='. " +
 		"(4) Jika columns/filters tidak disebutkan, kembalikan field tersebut kosong. " +
 		"(5) Validasi bahwa semua kolom di columns ada di tabel yang sesuai. " +
@@ -602,11 +684,13 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 }
 
 func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan) (string, error) {
-    start := time.Now()
-    var auditPhone string
-    if v := ctx.Value(ctxKey("audit_phone")); v != nil {
-        if s, ok := v.(string); ok { auditPhone = s }
-    }
+	start := time.Now()
+	var auditPhone string
+	if v := ctx.Value(ctxKey("audit_phone")); v != nil {
+		if s, ok := v.(string); ok {
+			auditPhone = s
+		}
+	}
 	// Validasi plan, dan coba lunakkan dengan resolusi tabel
 	tbl := strings.ToLower(strings.TrimSpace(plan.Table))
 	if _, ok := allowedTables[tbl]; !ok {
@@ -627,17 +711,19 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 		return "", err
 	}
 
-    query, args := a.buildSafeSelect(plan)
-    rows, err := a.db.Query(ctx, query, args...)
-    if err != nil {
-        a.writeAuditEntry(auditPhone, plan, query, args, 0, time.Since(start), "error", err)
-        return "", fmt.Errorf("database query failed: %w", err)
-    }
-    defer rows.Close()
-    out, count, rerr := a.rowsToTextAndCount(rows, 20)
-    a.writeAuditEntry(auditPhone, plan, query, args, count, time.Since(start), "ok", rerr)
-    if rerr != nil { return "", rerr }
-    return out, nil
+	query, args := a.buildSafeSelect(plan)
+	rows, err := a.db.Query(ctx, query, args...)
+	if err != nil {
+		a.writeAuditEntry(auditPhone, plan, query, args, 0, time.Since(start), "error", err)
+		return "", fmt.Errorf("database query failed: %w", err)
+	}
+	defer rows.Close()
+	out, count, rerr := a.rowsToTextAndCount(rows, 20)
+	a.writeAuditEntry(auditPhone, plan, query, args, count, time.Since(start), "ok", rerr)
+	if rerr != nil {
+		return "", rerr
+	}
+	return out, nil
 }
 
 // AnswerWithDB implements full flow:
@@ -678,11 +764,15 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 		sb.WriteString(basePrompt)
 		sb.WriteString("\n\n")
 	}
-	// Hanya sertakan konteks data ke Gemini bila diizinkan oleh konfigurasi dan intent meminta data
-	if wantsData && a.geminiCanSeeData && strings.TrimSpace(dbContext) != "" {
-		sb.WriteString("[KONTEKS DATA]:\n")
-		sb.WriteString(dbContext)
+	if strings.TrimSpace(dbContext) != "" {
+		sb.WriteString("[FAKTA]: Gunakan hanya informasi pada bagian ini. Jika angka/kolom tidak ada di [FAKTA], jangan mengarang atau menyimpulkan.\n")
+		sb.WriteString(a.buildFacts(dbContext))
 		sb.WriteString("\n\n")
+		if wantsData && a.geminiCanSeeData {
+			sb.WriteString("[KONTEKS DATA]:\n")
+			sb.WriteString(dbContext)
+			sb.WriteString("\n\n")
+		}
 	}
 	sb.WriteString("[PERTANYAAN USER]: ")
 	sb.WriteString(text)
@@ -722,6 +812,9 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	var userCtx string
 	var err error
 	claimed := userClaimsRegistered(text)
+	if strings.TrimSpace(userPhone) != "" {
+		claimed = true
+	}
 	registered := mem != nil && (mem.Registered || mem.RegisteredOverride)
 	role := "guest"
 	if registered {
@@ -900,7 +993,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 			return out, nil
 		}
 	}
-
+	ensureColumnsForIntent(text, plan)
 	// Personalisasi: injeksikan filter user bila tabel mendukung
 	tbl := strings.ToLower(plan.Table)
 	addFilter := func(column string, value string) {
@@ -918,13 +1011,20 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	// sehingga tidak ada pengecualian khusus di sini.
 	switch tbl {
 	case "user_profiles", "kpr_applications", "branch_staff":
-		addFilter("user_id", fmt.Sprintf("%d", userID))
+		if userID > 0 {
+			addFilter("user_id", fmt.Sprintf("%d", userID))
+		}
 	case "approval_workflow":
 		addFilter("assigned_to", fmt.Sprintf("%d", userID))
 	case "users":
 		if strings.TrimSpace(userPhone) != "" {
 			addFilter("phone", userPhone)
 		}
+	}
+
+	// Jika tabel mendukung JOIN ke users, sisipkan filter phone agar tidak perlu menanyakan nomor kembali
+	if canJoinUsers(tbl) && strings.TrimSpace(userPhone) != "" {
+		addFilter("phone", userPhone)
 	}
 
 	// Sanitasi rencana untuk privasi sebelum eksekusi DB
@@ -971,8 +1071,8 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	}
 
 	// Execute query
-    ctx = context.WithValue(ctx, ctxKey("audit_phone"), userPhone)
-    dbContext, err := a.ExecuteQuery(ctx, plan)
+	ctx = context.WithValue(ctx, ctxKey("audit_phone"), userPhone)
+	dbContext, err := a.ExecuteQuery(ctx, plan)
 	if err != nil {
 		return "", fmt.Errorf("query error: %w", err)
 	}
@@ -1003,11 +1103,16 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		sb.WriteString("\n\n")
 	}
 	appendConv(&sb, a.mem.Get(userPhone))
-	// Sertakan konteks data hanya bila intent meminta data dan diizinkan
-	if isDataIntent(text) && a.geminiCanSeeData && strings.TrimSpace(dbContext) != "" {
-		sb.WriteString("[KONTEKS DATA]:\n")
-		sb.WriteString(dbContext)
+	// Sertakan fakta terstruktur dan, jika diizinkan, konteks data mentah
+	if strings.TrimSpace(dbContext) != "" {
+		sb.WriteString("[FAKTA]: Gunakan hanya informasi pada bagian ini. Jika angka/kolom tidak ada di [FAKTA], jangan mengarang atau menyimpulkan.\n")
+		sb.WriteString(a.buildFacts(dbContext))
 		sb.WriteString("\n\n")
+		if isDataIntent(text) && a.geminiCanSeeData {
+			sb.WriteString("[KONTEKS DATA]:\n")
+			sb.WriteString(dbContext)
+			sb.WriteString("\n\n")
+		}
 	}
 	sb.WriteString("[PERTANYAAN USER]: ")
 	sb.WriteString(text)
@@ -1149,47 +1254,126 @@ func (a *AIQueryService) naivePlan(text string) (*domain.SQLPlan, error) {
 }
 
 func (a *AIQueryService) parsePlanJSON(s string) (*domain.SQLPlan, error) {
-	// Very simple JSON extractor to avoid dependency
-	plan := &domain.SQLPlan{Operation: "SELECT"}
+	plan := &domain.SQLPlan{Operation: "SELECT", Limit: 20}
 	s = strings.ReplaceAll(s, "\n", " ")
-
-	if i := strings.Index(strings.ToLower(s), "\"table\""); i != -1 {
+	tl := strings.ToLower(s)
+	if i := strings.Index(tl, "\"table\""); i != -1 {
 		j := strings.Index(s[i:], ":")
-		k := strings.Index(s[i+j+1:], "\"")
-		if j != -1 && k != -1 {
-			z := s[i+j+1+k+1:]
-			kk := strings.Index(z, "\"")
-			if kk != -1 {
-				plan.Table = z[:kk]
+		if j != -1 {
+			rest := s[i+j+1:]
+			if k := strings.Index(rest, "\""); k != -1 {
+				rest2 := rest[k+1:]
+				if kk := strings.Index(rest2, "\""); kk != -1 {
+					plan.Table = rest2[:kk]
+				}
 			}
 		}
 	}
-
+	// columns
+	reCols := regexp.MustCompile(`"columns"\s*:\s*\[(.*?)\]`)
+	if m := reCols.FindStringSubmatch(s); len(m) == 2 {
+		raw := m[1]
+		toks := regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(raw, -1)
+		for _, t := range toks {
+			plan.Columns = append(plan.Columns, strings.ToLower(strings.TrimSpace(t[1])))
+		}
+	}
+	// filters
+	reFilt := regexp.MustCompile(`\{\s*"column"\s*:\s*"([^"]+)"\s*,\s*"op"\s*:\s*"([^"]*)"\s*,\s*"value"\s*:\s*"?([^"}]+)"?\s*\}`)
+	ms := reFilt.FindAllStringSubmatch(s, -1)
+	for _, m := range ms {
+		col := strings.ToLower(strings.TrimSpace(m[1]))
+		op := strings.TrimSpace(m[2])
+		if op == "" {
+			op = "="
+		}
+		val := strings.TrimSpace(m[3])
+		plan.Filters = append(plan.Filters, domain.Filter{Column: col, Op: op, Value: val})
+	}
 	if plan.Table == "" {
 		return nil, fmt.Errorf("invalid plan: missing table")
 	}
-
-	plan.Limit = 20
 	return plan, nil
+}
+
+func ensureColumnsForIntent(text string, plan *domain.SQLPlan) {
+	if plan == nil {
+		return
+	}
+	t := strings.ToLower(text)
+	need := []string{}
+	if strings.Contains(t, "dp") || strings.Contains(t, "down payment") || strings.Contains(t, "uang muka") || strings.Contains(t, "ltv") || strings.Contains(t, "pinjaman") || strings.Contains(t, "loan") {
+		if strings.EqualFold(plan.Table, "kpr_applications") {
+			need = []string{"loan_amount", "down_payment", "property_value", "ltv_ratio"}
+		}
+	}
+	for _, c := range need {
+		found := false
+		for _, ex := range plan.Columns {
+			if strings.EqualFold(ex, c) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			plan.Columns = append(plan.Columns, c)
+		}
+	}
 }
 
 func (a *AIQueryService) buildSafeSelect(p *domain.SQLPlan) (string, []interface{}) {
 	cols := "*"
 	if len(p.Columns) > 0 {
-		cols = strings.Join(p.Columns, ",")
+		// gunakan hanya kolom dari tabel utama untuk SELECT
+		mainCols := []string{}
+		for _, c := range p.Columns {
+			if isColumnIn(p.Table, c) {
+				mainCols = append(mainCols, c)
+			}
+		}
+		if len(mainCols) > 0 {
+			cols = strings.Join(mainCols, ",")
+		}
 	}
 
-	q := fmt.Sprintf("SELECT %s FROM %s", cols, p.Table)
+	aliasMain := "t"
+	q := fmt.Sprintf("SELECT %s FROM %s %s", cols, p.Table, aliasMain)
 	args := []interface{}{}
+
+	// Tentukan apakah perlu JOIN ke users untuk filter
+	joinUsers := false
+	for _, f := range p.Filters {
+		if !isColumnIn(p.Table, f.Column) && isUsersColumn(f.Column) && canJoinUsers(p.Table) {
+			joinUsers = true
+			break
+		}
+	}
+	if joinUsers {
+		if strings.EqualFold(p.Table, "approval_workflow") {
+			q += " JOIN users u ON u.id = " + aliasMain + ".assigned_to"
+		} else {
+			q += " JOIN users u ON u.id = " + aliasMain + ".user_id"
+		}
+	}
 
 	if len(p.Filters) > 0 {
 		w := []string{}
-		for i, f := range p.Filters {
+		argIdx := 1
+		for _, f := range p.Filters {
 			if f.Op != "=" { // only allow equality
 				continue
 			}
-			w = append(w, fmt.Sprintf("%s = $%d", f.Column, i+1))
+			target := ""
+			if isColumnIn(p.Table, f.Column) {
+				target = aliasMain + "." + f.Column
+			} else if joinUsers && isUsersColumn(f.Column) {
+				target = "u." + f.Column
+			} else {
+				continue
+			}
+			w = append(w, fmt.Sprintf("%s = $%d", target, argIdx))
 			args = append(args, f.Value)
+			argIdx++
 		}
 		if len(w) > 0 {
 			q += " WHERE " + strings.Join(w, " AND ")
@@ -1210,14 +1394,14 @@ func (a *AIQueryService) rowsToTextAndCount(rows interface{}, max int) (string, 
 		Next() bool
 		Scan(dest ...interface{}) error
 	})
-    if !ok {
-        return "", 0, fmt.Errorf("invalid rows type")
-    }
+	if !ok {
+		return "", 0, fmt.Errorf("invalid rows type")
+	}
 
-    cols, err := sqlRows.Columns()
-    if err != nil {
-        return "", 0, err
-    }
+	cols, err := sqlRows.Columns()
+	if err != nil {
+		return "", 0, err
+	}
 
 	var out strings.Builder
 	count := 0
@@ -1229,9 +1413,9 @@ func (a *AIQueryService) rowsToTextAndCount(rows interface{}, max int) (string, 
 			scans[i] = &vals[i]
 		}
 
-        if err := sqlRows.Scan(scans...); err != nil {
-            return "", 0, err
-        }
+		if err := sqlRows.Scan(scans...); err != nil {
+			return "", 0, err
+		}
 
 		for i, c := range cols {
 			v := vals[i]
@@ -1251,59 +1435,103 @@ func (a *AIQueryService) rowsToTextAndCount(rows interface{}, max int) (string, 
 		}
 	}
 
-    if count == 0 {
-        return "Tidak ada hasil.", 0, nil
-    }
+	if count == 0 {
+		return "Tidak ada hasil.", 0, nil
+	}
 
-    return out.String(), count, nil
+	return out.String(), count, nil
 }
+
 type ctxKey string
 
 func (a *AIQueryService) writeAuditEntry(phone string, plan *domain.SQLPlan, query string, args []interface{}, rowCount int, dur time.Duration, status string, err error) {
-    if strings.TrimSpace(a.auditPath) == "" { return }
-    type entry struct {
-        Timestamp   string            `json:"ts"`
-        Phone       string            `json:"phone"`
-        TextTable   string            `json:"table"`
-        Columns     []string          `json:"columns,omitempty"`
-        Filters     []domain.Filter   `json:"filters,omitempty"`
-        Limit       int               `json:"limit"`
-        Query       string            `json:"query"`
-        Args        []interface{}     `json:"args"`
-        RowCount    int               `json:"row_count"`
-        DurationMs  int64             `json:"duration_ms"`
-        Status      string            `json:"status"`
-        Error       string            `json:"error,omitempty"`
-    }
-    sanitizedArgs := make([]interface{}, len(args))
-    copy(sanitizedArgs, args)
-    if plan != nil {
-        for i, f := range plan.Filters {
-            lc := strings.ToLower(strings.TrimSpace(f.Column))
-            if lc == "email" || lc == "phone" || lc == "monthly_income" || lc == "nik" || lc == "npwp" {
-                if i < len(sanitizedArgs) { sanitizedArgs[i] = "[redacted]" }
-                plan.Filters[i].Value = "[redacted]"
-            }
-        }
-    }
-    e := entry{
-        Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
-        Phone:      phone,
-        TextTable:  strings.ToLower(strings.TrimSpace(plan.Table)),
-        Columns:    plan.Columns,
-        Filters:    plan.Filters,
-        Limit:      plan.Limit,
-        Query:      query,
-        Args:       sanitizedArgs,
-        RowCount:   rowCount,
-        DurationMs: dur.Milliseconds(),
-        Status:     status,
-    }
-    if err != nil { e.Error = err.Error() }
-    b, jerr := json.Marshal(e)
-    if jerr != nil { return }
-    f, ferr := os.OpenFile(a.auditPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-    if ferr != nil { return }
-    defer f.Close()
-    _, _ = f.Write(append(b, '\n'))
+	if strings.TrimSpace(a.auditPath) == "" {
+		return
+	}
+	type entry struct {
+		Timestamp  string          `json:"ts"`
+		Phone      string          `json:"phone"`
+		TextTable  string          `json:"table"`
+		Columns    []string        `json:"columns,omitempty"`
+		Filters    []domain.Filter `json:"filters,omitempty"`
+		Limit      int             `json:"limit"`
+		Query      string          `json:"query"`
+		Args       []interface{}   `json:"args"`
+		RowCount   int             `json:"row_count"`
+		DurationMs int64           `json:"duration_ms"`
+		Status     string          `json:"status"`
+		Error      string          `json:"error,omitempty"`
+	}
+	sanitizedArgs := make([]interface{}, len(args))
+	copy(sanitizedArgs, args)
+	if plan != nil {
+		for i, f := range plan.Filters {
+			lc := strings.ToLower(strings.TrimSpace(f.Column))
+			if lc == "email" || lc == "phone" || lc == "monthly_income" || lc == "nik" || lc == "npwp" {
+				if i < len(sanitizedArgs) {
+					sanitizedArgs[i] = "[redacted]"
+				}
+				plan.Filters[i].Value = "[redacted]"
+			}
+		}
+	}
+	e := entry{
+		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
+		Phone:      phone,
+		TextTable:  strings.ToLower(strings.TrimSpace(plan.Table)),
+		Columns:    plan.Columns,
+		Filters:    plan.Filters,
+		Limit:      plan.Limit,
+		Query:      query,
+		Args:       sanitizedArgs,
+		RowCount:   rowCount,
+		DurationMs: dur.Milliseconds(),
+		Status:     status,
+	}
+	if err != nil {
+		e.Error = err.Error()
+	}
+	b, jerr := json.Marshal(e)
+	if jerr != nil {
+		return
+	}
+	f, ferr := os.OpenFile(a.auditPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if ferr != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.Write(append(b, '\n'))
+}
+func (a *AIQueryService) buildFacts(dbText string) string {
+	lines := strings.Split(dbText, "\n")
+	var out strings.Builder
+	sensitive := map[string]struct{}{"email": {}, "phone": {}, "monthly_income": {}, "nik": {}, "npwp": {}}
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if ln == "" {
+			continue
+		}
+		parts := strings.Fields(ln)
+		// Each part like key=value
+		keep := []string{}
+		for _, p := range parts {
+			kv := strings.SplitN(p, "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k := strings.ToLower(strings.TrimSpace(kv[0]))
+			v := strings.TrimSpace(kv[1])
+			if _, bad := sensitive[k]; bad {
+				continue
+			}
+			// simple cleanup of trailing commas
+			v = strings.Trim(v, ",")
+			keep = append(keep, fmt.Sprintf("%s=%s", k, v))
+		}
+		if len(keep) > 0 {
+			out.WriteString(strings.Join(keep, " "))
+			out.WriteString("\n")
+		}
+	}
+	return out.String()
 }

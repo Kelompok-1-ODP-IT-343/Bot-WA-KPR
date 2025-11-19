@@ -61,7 +61,7 @@ func NewConfig() domain.ConfigService {
 
 	auditPath := os.Getenv("SQL_AUDIT_PATH")
 	if strings.TrimSpace(auditPath) == "" {
-		auditPath = "sql_audit.json"
+		auditPath = "sql_audit.jsonl"
 	}
 
 	return &Config{
