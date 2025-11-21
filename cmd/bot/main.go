@@ -37,16 +37,16 @@ func main() {
 
 	log.Println("WhatsApp bot running")
 
-    // Initialize AI Query service (untuk SELECT aman) dengan privasi Gemini
-    aiQueryService := services.NewAIQueryService(dbService, cfg.GetGeminiAPIKey(), cfg.GetGeminiCanSeeData(), cfg.GetSQLAuditPath())
-    services.RefreshAllowedColumnsFromDDL("ddl.sql")
+	// Initialize AI Query service (untuk SELECT aman) dengan privasi Gemini
+	aiQueryService := services.NewAIQueryService(dbService, cfg.GetGeminiAPIKey(), cfg.GetGeminiCanSeeData(), cfg.GetSQLAuditPath(), cfg.GetRelaxSecurity())
+	services.RefreshAllowedColumnsFromDDL("ddl.sql")
 
-    // Initialize KPR QA service (gabung prompt txt + input user)
-    qaService := services.NewKPRQAService(aiQueryService, cfg.GetGeminiAPIKey(), cfg.GetKPRPromptPath())
+	// Initialize KPR QA service (gabung prompt txt + input user)
+	qaService := services.NewKPRQAService(aiQueryService, cfg.GetGeminiAPIKey(), cfg.GetKPRPromptPath())
 
 	// Initialize handlers
 	messageHandler := handlers.NewMessageHandler(whatsappService, cfg)
-    botHandler := handlers.NewBotHandler(qaService, whatsappService)
+	botHandler := handlers.NewBotHandler(qaService, whatsappService)
 
 	// Setup WhatsApp event handler for listening to user chats
 	whatsappService.AddEventHandler(botHandler.HandleMessage)

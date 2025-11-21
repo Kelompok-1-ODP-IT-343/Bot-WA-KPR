@@ -515,6 +515,7 @@ type AIQueryService struct {
 	mem              *MemoryStore
 	geminiCanSeeData bool
 	auditPath        string
+	relaxed          bool
 }
 
 // MemoryStore menyimpan status ringan per nomor pengguna (registration, role, dll.)
@@ -762,7 +763,7 @@ func canJoinUsers(tbl string) bool {
 	}
 }
 
-func sanitizePlanForPrivacy(p *domain.SQLPlan) error {
+func (a *AIQueryService) sanitizePlanForPrivacy(p *domain.SQLPlan) error {
 	if p == nil {
 		return fmt.Errorf("rencana query tidak tersedia")
 	}
@@ -772,15 +773,19 @@ func sanitizePlanForPrivacy(p *domain.SQLPlan) error {
 	}
 
 	// Batasi limit global yang aman
-	capLimit(p, 100)
+	if !a.relaxed {
+		capLimit(p, 100)
+	}
 
 	validateFilterColumns(p)
 	if isSensitiveTable(tbl) {
-		if !hasRestrictiveFilter(p) {
-			return fmt.Errorf("Akses massal ke data pengguna dibatasi. Sebutkan filter spesifik (misal: id, user_id, phone, atau email).")
+		if !a.relaxed {
+			if !hasRestrictiveFilter(p) {
+				return fmt.Errorf("Akses massal ke data pengguna dibatasi. Sebutkan filter spesifik (misal: id, user_id, phone, atau email).")
+			}
+			whitelistSafeColumns(p)
+			capLimit(p, 5)
 		}
-		whitelistSafeColumns(p)
-		capLimit(p, 5)
 	}
 	return nil
 }
@@ -814,13 +819,14 @@ func isDataIntent(text string) bool {
 	return false
 }
 
-func NewAIQueryService(db domain.DatabaseService, geminiKey string, geminiCanSeeData bool, auditPath string) domain.AIQueryService {
+func NewAIQueryService(db domain.DatabaseService, geminiKey string, geminiCanSeeData bool, auditPath string, relaxed bool) domain.AIQueryService {
 	return &AIQueryService{
 		db:               db,
 		geminiKey:        geminiKey,
 		mem:              NewMemoryStore(),
 		geminiCanSeeData: geminiCanSeeData,
 		auditPath:        auditPath,
+		relaxed:          relaxed,
 	}
 }
 
@@ -884,7 +890,7 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 		}
 	}
 	if strings.TrimSpace(plan.SQL) != "" {
-		q, tables, serr := sanitizeRawSQL(plan.SQL)
+		q, tables, serr := a.sanitizeRawSQL(plan.SQL)
 		if serr != nil {
 			return "", serr
 		}
@@ -921,7 +927,7 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 	if strings.ToUpper(strings.TrimSpace(plan.Operation)) != "SELECT" {
 		return "", fmt.Errorf("Hanya operasi SELECT yang diizinkan.")
 	}
-	if err := sanitizePlanForPrivacy(plan); err != nil {
+	if err := a.sanitizePlanForPrivacy(plan); err != nil {
 		return "", err
 	}
 	query, args := a.buildSafeSelect(plan)
@@ -1241,7 +1247,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	}
 
 	// Sanitasi rencana untuk privasi sebelum eksekusi DB
-	if err = sanitizePlanForPrivacy(plan); err != nil {
+	if err = a.sanitizePlanForPrivacy(plan); err != nil {
 		// Jika tidak lolos sanitasi, jangan eksekusi DB; jawab umum saja
 		if strings.TrimSpace(a.geminiKey) == "" {
 			return "Pertanyaan Anda tidak memerlukan atau mewajibkan akses data. AI tidak aktif, jadi tidak ada data yang ditampilkan.", nil
@@ -1623,7 +1629,7 @@ func (a *AIQueryService) buildSafeSelect(p *domain.SQLPlan) (string, []interface
 	return q, args
 }
 
-func sanitizeRawSQL(sql string) (string, []string, error) {
+func (a *AIQueryService) sanitizeRawSQL(sql string) (string, []string, error) {
 	s := strings.TrimSpace(sql)
 	low := strings.ToLower(s)
 	if strings.HasPrefix(low, "with ") {
@@ -1658,8 +1664,10 @@ func sanitizeRawSQL(sql string) (string, []string, error) {
 	if sens {
 		lim = 5
 	}
-	if !strings.Contains(low, " limit ") {
-		s = fmt.Sprintf("SELECT * FROM (%s) sub LIMIT %d", s, lim)
+	if !a.relaxed {
+		if !strings.Contains(low, " limit ") {
+			s = fmt.Sprintf("SELECT * FROM (%s) sub LIMIT %d", s, lim)
+		}
 	}
 	return s, tables, nil
 }
@@ -1709,9 +1717,8 @@ func (a *AIQueryService) rowsToTextAndCount(rows interface{}, max int) (string, 
 
 		for i, c := range cols {
 			v := vals[i]
-			// Masking sederhana untuk email/phone jika muncul
 			lc := strings.ToLower(c)
-			if lc == "email" || lc == "phone" || lc == "monthly_income" || lc == "nik" || lc == "npwp" {
+			if !a.relaxed && (lc == "email" || lc == "phone" || lc == "monthly_income" || lc == "nik" || lc == "npwp") {
 				fmt.Fprintf(&out, "%s=%s ", c, "[redacted]")
 			} else {
 				fmt.Fprintf(&out, "%s=%v ", c, v)
@@ -1811,8 +1818,10 @@ func (a *AIQueryService) buildFacts(dbText string) string {
 			}
 			k := strings.ToLower(strings.TrimSpace(kv[0]))
 			v := strings.TrimSpace(kv[1])
-			if _, bad := sensitive[k]; bad {
-				continue
+			if !a.relaxed {
+				if _, bad := sensitive[k]; bad {
+					continue
+				}
 			}
 			// simple cleanup of trailing commas
 			v = strings.Trim(v, ",")

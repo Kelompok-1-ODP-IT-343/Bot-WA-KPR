@@ -43,6 +43,7 @@ type ConfigService interface {
     GetKPRPromptPath() string
     GetGeminiCanSeeData() bool
     GetSQLAuditPath() string
+    GetRelaxSecurity() bool
 }
 
 // OTPService handles OTP generation, validation, and expiry
