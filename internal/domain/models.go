@@ -2,11 +2,13 @@ package domain
 
 // SQLPlan represents a safe SQL query plan
 type SQLPlan struct {
-	Operation string   `json:"operation"` // SELECT only
-	Table     string   `json:"table"`     // users | kpr_applications | approval_workflows
-	Columns   []string `json:"columns"`   // optional, default "*"
-	Filters   []Filter `json:"filters"`   // equality filters only
-	Limit     int      `json:"limit"`     // optional
+    Operation string   `json:"operation"` // SELECT only
+    Table     string   `json:"table"`     // users | kpr_applications | approval_workflows
+    Columns   []string `json:"columns"`   // optional, default "*"
+    Filters   []Filter `json:"filters"`   // equality filters only
+    Limit     int      `json:"limit"`     // optional
+    SQL       string   `json:"sql"`
+    Args      []string `json:"args"`
 }
 
 // Filter represents a SQL filter condition
