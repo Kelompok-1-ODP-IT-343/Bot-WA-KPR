@@ -1,26 +1,21 @@
 package handlers
 
 import (
-	"context"
-	"testing"
-	"time"
+    "context"
+    "testing"
 
-	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
+    "github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 )
 
 type mockWhatsApp struct {
-	lastPhone string
-	lastMsg   string
+    lastPhone string
+    lastMsg   string
 }
 
 func (m *mockWhatsApp) SendMessage(ctx context.Context, phone, message string) error {
-	m.lastPhone = phone
-	m.lastMsg = message
-	return nil
-}
-
-func (m *mockWhatsApp) SendMessageWithAutoRevoke(ctx context.Context, phone, message string, after time.Duration) error {
-	return nil
+    m.lastPhone = phone
+    m.lastMsg = message
+    return nil
 }
 
 func (m *mockWhatsApp) IsConnected() bool { return true }

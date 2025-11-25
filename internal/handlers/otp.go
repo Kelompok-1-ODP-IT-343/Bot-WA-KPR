@@ -1,14 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"time"
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
 
-	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
-	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/services"
+    "github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
+    "github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/services"
 )
 
 type OTPHandler struct {
@@ -72,13 +71,12 @@ func (h *OTPHandler) GenerateOTP(w http.ResponseWriter, r *http.Request) {
 	message := fmt.Sprintf("🔐 Kode OTP Anda: *%s*\n\n⏰ Berlaku selama %d detik\n\n⚠️ Jangan bagikan kode ini kepada siapapun!",
 		resp.Code, resp.ExpiresIn)
 
-	if h.whatsappService.IsConnected() {
-		// Unsend khusus OTP: gunakan durasi sesuai expiry
-		if err := h.whatsappService.SendMessageWithAutoRevoke(r.Context(), req.Phone, message, time.Duration(resp.ExpiresIn)*time.Second); err != nil {
-			log.Printf("Failed to send OTP via WhatsApp: %v", err)
-			// Continue anyway, return the OTP response
-		}
-	}
+    if h.whatsappService.IsConnected() {
+        if err := h.whatsappService.SendMessage(r.Context(), req.Phone, message); err != nil {
+            log.Printf("Failed to send OTP via WhatsApp: %v", err)
+            // Continue anyway, return the OTP response
+        }
+    }
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
