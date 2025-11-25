@@ -33,6 +33,11 @@ var tableKeywords = map[string][]string{
 // resolveTableFromText mencoba memetakan teks pertanyaan ke nama tabel yang diizinkan
 func resolveTableFromText(text string) string {
 	lower := strings.ToLower(text)
+	if app := extractAppNumber(text); strings.TrimSpace(app) != "" {
+		if _, ok := allowedTables["kpr_applications"]; ok {
+			return "kpr_applications"
+		}
+	}
 	// 1) Cocokkan langsung nama tabel whitelist
 	names := make([]string, 0, len(allowedTables))
 	for k := range allowedTables {
@@ -592,7 +597,7 @@ func hasRestrictiveFilter(p *domain.SQLPlan) bool {
 		if val == "" {
 			continue
 		}
-		if (col == "id" || col == "user_id" || col == "phone" || col == "email") && (op == "=" || op == "eq" || op == "==") {
+		if (col == "id" || col == "user_id" || col == "phone" || col == "email" || col == "application_number") && (op == "=" || op == "eq" || op == "==") {
 			return true
 		}
 	}
@@ -838,6 +843,149 @@ func extractAppNumber(s string) string {
 	return m
 }
 
+func stripWaitPhrases(s string) string {
+	lines := strings.Split(s, "\n")
+	filtered := make([]string, 0, len(lines))
+	bads := []string{"sedang saya cek", "mohon tunggu", "sebentar", "tunggu ya", "akan saya cek", "saya cek"}
+	for _, ln := range lines {
+		l := strings.ToLower(strings.TrimSpace(ln))
+		skip := false
+		for _, b := range bads {
+			if strings.Contains(l, b) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			filtered = append(filtered, ln)
+		}
+	}
+	out := strings.Join(filtered, "\n")
+	return strings.TrimSpace(out)
+}
+
+func parseKVLine(line string) map[string]string {
+	out := map[string]string{}
+	parts := strings.Fields(strings.TrimSpace(line))
+	for _, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k := strings.ToLower(strings.TrimSpace(kv[0]))
+		v := strings.Trim(strings.TrimSpace(kv[1]), ",")
+		out[k] = v
+	}
+	return out
+}
+
+func summarizeKPRApp(dbText string, appHint string) string {
+	lines := strings.Split(strings.TrimSpace(dbText), "\n")
+	var first string
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if ln != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
+			first = ln
+			break
+		}
+	}
+	if first == "" {
+		return "Data tidak ketemu."
+	}
+	kv := parseKVLine(first)
+	app := kv["application_number"]
+	if strings.TrimSpace(app) == "" {
+		app = appHint
+	}
+	status := kv["status"]
+	loan := kv["loan_amount"]
+	angs := kv["monthly_installment"]
+	tenor := kv["loan_term_years"]
+	msg := "Pengajuan KPR Anda dengan nomor " + app
+	if strings.TrimSpace(status) != "" {
+		msg += " berstatus " + status
+	}
+	if strings.TrimSpace(loan) != "" {
+		msg += ". Jumlah pinjaman Rp " + loan
+	}
+	if strings.TrimSpace(angs) != "" {
+		msg += ", angsuran per bulan Rp " + angs
+	}
+	if strings.TrimSpace(tenor) != "" {
+		msg += ", tenor " + tenor + " tahun"
+	}
+	msg += ". Kamu juga bisa cek di Website Satuatap."
+	return msg
+}
+
+func summarizeGeneral(text string, dbText string) string {
+	lines := strings.Split(strings.TrimSpace(dbText), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	var first string
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if ln != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
+			first = ln
+			break
+		}
+	}
+	if first == "" {
+		return "Data tidak ketemu."
+	}
+	kv := parseKVLine(first)
+	if kv["loan_amount"] != "" || kv["monthly_installment"] != "" || kv["status"] != "" {
+		msg := "Ditemukan pengajuan KPR milik Anda"
+		if s := kv["status"]; s != "" {
+			msg += " berstatus " + s
+		}
+		if v := kv["loan_amount"]; v != "" {
+			msg += ". Plafon Rp " + v
+		}
+		if v := kv["monthly_installment"]; v != "" {
+			msg += ", angsuran Rp " + v + "/bulan"
+		}
+		if v := kv["loan_term_years"]; v != "" {
+			msg += ", tenor " + v + " tahun"
+		}
+		return msg + ". Kamu juga bisa cek di Website Satuatap."
+	}
+	if kv["rate_name"] != "" || kv["effective_rate"] != "" || kv["min_income"] != "" {
+		msg := "Produk KPR yang aktif"
+		if v := kv["rate_name"]; v != "" {
+			msg += ": " + v
+		}
+		if v := kv["effective_rate"]; v != "" {
+			msg += ", bunga efektif " + v + "%"
+		}
+		if v := kv["min_income"]; v != "" {
+			msg += ", minimal gaji Rp " + v
+		}
+		return msg
+	}
+	if kv["stage"] != "" || kv["status"] != "" {
+		msg := "Proses approval"
+		if v := kv["stage"]; v != "" {
+			msg += ": " + v
+		}
+		if v := kv["status"]; v != "" {
+			msg += ", status " + v
+		}
+		return msg
+	}
+	c := 0
+	for _, ln := range lines {
+		if strings.TrimSpace(ln) != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
+			c++
+		}
+	}
+	if c > 0 {
+		return fmt.Sprintf("Ditemukan %d baris data.", c)
+	}
+	return ""
+}
+
 func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQLPlan, error) {
 	log.Printf("[AI] PlanQuery start len=%d gemini=%v", len(strings.TrimSpace(text)), strings.TrimSpace(a.geminiKey) != "")
 	if a.geminiKey == "" {
@@ -982,13 +1130,42 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 	wantsData := isDataIntent(text)
 	var dbContext string
 	if wantsData {
-		// Generate plan (uses model if geminiKey set, else naive)
 		plan, err := a.PlanQuery(ctx, text)
 		if err == nil {
 			// Eksekusi query dengan fallback lunak
+			// Tambahkan filter application_number bila ada
+			if app := extractAppNumber(text); strings.TrimSpace(app) != "" {
+				if strings.EqualFold(strings.ToLower(plan.Table), "kpr_applications") {
+					if plan.Filters == nil {
+						plan.Filters = []domain.Filter{}
+					}
+					exists := false
+					for _, f := range plan.Filters {
+						if strings.EqualFold(f.Column, "application_number") {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						plan.Filters = append(plan.Filters, domain.Filter{Column: "application_number", Op: "=", Value: app})
+					}
+					if plan.Limit == 0 || plan.Limit > 1 {
+						plan.Limit = 1
+					}
+				}
+			}
 			dbContext, err = a.ExecuteQuery(ctx, plan)
 			if err != nil {
 				dbContext = ""
+			}
+			if strings.TrimSpace(dbContext) != "" {
+				app := extractAppNumber(text)
+				if strings.TrimSpace(app) != "" {
+					return summarizeKPRApp(dbContext, app), nil
+				}
+				if s := summarizeGeneral(text, dbContext); s != "" {
+					return s, nil
+				}
 			}
 		}
 	}
@@ -1056,14 +1233,13 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 		return "Tidak ada jawaban.", nil
 	}
 	intro := "Halo! Aku Tanti, asisten virtual BNI. Aku siap bantu soal KPR BNI Griya.\n"
+	out = stripWaitPhrases(out)
 	low := strings.ToLower(strings.TrimSpace(out))
 	if strings.Contains(low, "tanti") && strings.HasPrefix(low, "halo") {
 		return out, nil
 	}
 	log.Printf("[AI] AnswerWithDB ok len=%d", len(out))
-	if wantsData && strings.TrimSpace(dbContext) != "" && a.relaxed {
-		return intro + out + "\n" + dbContext, nil
-	}
+	// Hindari append data mentah ke jawaban AI
 	return intro + out, nil
 }
 
@@ -1160,6 +1336,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 			}
 			return "Kamu bisa tanya apa saja soal KPR, tapi akses data tidak tersedia untuk nomor yang belum terdaftar.", nil
 		}
+		out = stripWaitPhrases(out)
 		a.mem.Update(userPhone, func(m *UserMemory) { m.LastUser = text; m.LastBot = out; m.Greeted = true })
 		return out, nil
 	}
@@ -1274,6 +1451,14 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		}
 		plan.Filters = append(plan.Filters, domain.Filter{Column: column, Op: "=", Value: value})
 	}
+	if app := extractAppNumber(text); strings.TrimSpace(app) != "" {
+		if strings.EqualFold(tbl, "kpr_applications") {
+			addFilter("application_number", app)
+			if plan.Limit == 0 || plan.Limit > 1 {
+				plan.Limit = 1
+			}
+		}
+	}
 	// Role admin tetap tidak boleh akses data raw; perlakukan sama seperti nasabah
 	// sehingga tidak ada pengecualian khusus di sini.
 	switch tbl {
@@ -1343,6 +1528,15 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	dbContext, err := a.ExecuteQuery(ctx, plan)
 	if err != nil {
 		return "", fmt.Errorf("query error: %w", err)
+	}
+	if strings.TrimSpace(dbContext) != "" {
+		app := extractAppNumber(text)
+		if strings.TrimSpace(app) != "" {
+			return summarizeKPRApp(dbContext, app), nil
+		}
+		if s := summarizeGeneral(text, dbContext); s != "" {
+			return s, nil
+		}
 	}
 
 	if strings.TrimSpace(a.geminiKey) == "" {
@@ -1414,9 +1608,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		return "Tidak ada jawaban.", nil
 	}
 	a.mem.Update(userPhone, func(m *UserMemory) { m.LastUser = text; m.LastBot = out; m.Greeted = true })
-	if wantsData && strings.TrimSpace(dbContext) != "" && a.relaxed {
-		return out + "\n" + dbContext, nil
-	}
+	// Hindari append data mentah ke jawaban AI
 	return out, nil
 }
 
@@ -1605,9 +1797,9 @@ func ensureColumnsForIntent(text string, plan *domain.SQLPlan) {
 	}
 	t := strings.ToLower(text)
 	need := []string{}
-	if strings.Contains(t, "dp") || strings.Contains(t, "down payment") || strings.Contains(t, "uang muka") || strings.Contains(t, "ltv") || strings.Contains(t, "pinjaman") || strings.Contains(t, "loan") {
+	if strings.Contains(t, "dp") || strings.Contains(t, "down payment") || strings.Contains(t, "uang muka") || strings.Contains(t, "ltv") || strings.Contains(t, "pinjaman") || strings.Contains(t, "loan") || strings.Contains(t, "angsuran") || strings.Contains(t, "cicilan") {
 		if strings.EqualFold(plan.Table, "kpr_applications") {
-			need = []string{"loan_amount", "down_payment", "property_value", "ltv_ratio"}
+			need = []string{"loan_amount", "monthly_installment", "down_payment", "property_value", "ltv_ratio", "status", "interest_rate", "loan_term_years"}
 		}
 	}
 	for _, c := range need {
@@ -1779,7 +1971,7 @@ func (a *AIQueryService) rowsToTextAndCount(rows interface{}, max int) (string, 
 		for i, c := range cols {
 			v := vals[i]
 			lc := strings.ToLower(c)
-			if !a.relaxed && (lc == "email" || lc == "phone" || lc == "monthly_income" || lc == "nik" || lc == "npwp") {
+			if lc == "email" || lc == "phone" || lc == "monthly_income" || lc == "nik" || lc == "npwp" || lc == "password_hash" || lc == "bank_account_number" {
 				fmt.Fprintf(&out, "%s=%s ", c, "[redacted]")
 			} else {
 				fmt.Fprintf(&out, "%s=%v ", c, v)
@@ -1863,7 +2055,7 @@ func (a *AIQueryService) writeAuditEntry(phone string, plan *domain.SQLPlan, que
 func (a *AIQueryService) buildFacts(dbText string) string {
 	lines := strings.Split(dbText, "\n")
 	var out strings.Builder
-	sensitive := map[string]struct{}{"email": {}, "phone": {}, "monthly_income": {}, "nik": {}, "npwp": {}}
+	sensitive := map[string]struct{}{"email": {}, "phone": {}, "monthly_income": {}, "nik": {}, "npwp": {}, "password_hash": {}, "bank_account_number": {}}
 	for _, ln := range lines {
 		ln = strings.TrimSpace(ln)
 		if ln == "" {
@@ -1879,10 +2071,8 @@ func (a *AIQueryService) buildFacts(dbText string) string {
 			}
 			k := strings.ToLower(strings.TrimSpace(kv[0]))
 			v := strings.TrimSpace(kv[1])
-			if !a.relaxed {
-				if _, bad := sensitive[k]; bad {
-					continue
-				}
+			if _, bad := sensitive[k]; bad {
+				continue
 			}
 			// simple cleanup of trailing commas
 			v = strings.Trim(v, ",")

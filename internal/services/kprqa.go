@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 )
@@ -59,12 +61,30 @@ func (s *KPRQAService) readPromptFile() string {
 	b, err := os.ReadFile(s.promptPath)
 	propmt := `Aku Tanti, asisten virtual BNI untuk KPR BNI Griya.
 Jawab dengan bahasa Indonesia natural, ramah, dan to the point.
-Hindari format kaku seperti daftar "Intisari/Data/Langkah/Disclaimer"; berikan jawaban langsung.
+Hindari format kaku; berikan jawaban langsung.
 Gunakan data sistem sebagai konteks secara aman jika tersedia; jangan tampilkan data sensitif.
-Jangan berikan saran finansial personal atau rekomendasi keputusan spesifik.
-Jika butuh bantuan lanjutan, arahkan secara ringkas ke petugas atau cabang BNI terdekat.`
+Jika pengguna menyebut nomor aplikasi KPR atau sudah teridentifikasi lewat nomor WhatsApp, jawab langsung pakai data yang ada tanpa meminta informasi tambahan.
+Untuk pertanyaan seperti jumlah pinjaman, angsuran bulanan, tenor, status, dan bunga: berikan angka/nilai spesifik dari [FAKTA] secara ringkas.
+Jangan menolak akses data yang aman; fokus pada jawaban langsung berbasis [FAKTA].
+Jangan tulis kalimat proses/menunggu seperti "sedang saya cek", "mohon tunggu", atau bentuk serupa; langsung berikan hasilnya.
+Jawab hanya berdasarkan [FAKTA] dan [KONTEKS DATA] yang disediakan sistem. Jika [FAKTA] kosong untuk pertanyaan berbasis data, jawab singkat bahwa data tidak tersedia; jangan mengarang atau menyimpulkan.`
 	if err != nil {
 		return propmt
 	}
-	return propmt + " Berikut adalah knowledge yang diberikan: " + string(b)
+	// Tambahkan DDL agar AI memahami skema dan kolom aman (relative ke promptPath)
+	ddlPath := filepath.Join(filepath.Dir(s.promptPath), "ddl.sql")
+	ddl := ""
+	if dbb, derr := os.ReadFile(ddlPath); derr == nil {
+		lines := strings.Split(string(dbb), "\n")
+		if len(lines) > 245 {
+			lines = lines[:245]
+		}
+		ddl = strings.Join(lines, "\n")
+	}
+	base := propmt + " Berikut adalah knowledge yang diberikan: " + string(b)
+	if ddl != "" {
+		base += "\n\nSkema basis data (DDL ringkas):\n" + ddl
+		base += "\n\nContoh kebutuhan umum: status aplikasi, plafon pinjaman, angsuran bulanan, tenor, bunga, promo aktif. Gunakan kolom yang relevan dari kpr_applications, kpr_rates, approval_workflow."
+	}
+	return base
 }

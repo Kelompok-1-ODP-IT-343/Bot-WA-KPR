@@ -50,11 +50,12 @@ func NewConfig() domain.ConfigService {
 	}
 
 	// Privacy flag: control whether Gemini can see DB data strings in prompt
-	// Default: false (Gemini should NOT see raw data strings)
-	geminiCanSeeData := false
+	// Default: true (aktif) agar AI bisa merangkum langsung; dapat dimatikan via env
+	geminiCanSeeData := true
 	if v := os.Getenv("GEMINI_CAN_SEE_DATA"); v != "" {
-		// Accept common truthy values: true/1/yes/on
 		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "false", "0", "no", "off":
+			geminiCanSeeData = false
 		case "true", "1", "yes", "on":
 			geminiCanSeeData = true
 		}
