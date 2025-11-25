@@ -830,6 +830,13 @@ func NewAIQueryService(db domain.DatabaseService, geminiKey string, geminiCanSee
 	}
 }
 
+func extractAppNumber(s string) string {
+	tl := strings.ToUpper(s)
+	re := regexp.MustCompile(`KPR[-A-Z0-9_]*-?[0-9]+`)
+	m := re.FindString(tl)
+	return m
+}
+
 func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQLPlan, error) {
 	if a.geminiKey == "" {
 		// Fallback: naive parser
@@ -965,9 +972,20 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 		}
 	}
 
-	// Jika tidak ada AI key, jawab umum tanpa menampilkan data mentah
+	// Jika tidak ada AI key: jika ada konteks DB, kembalikan langsung agar pertanyaan seperti "list pengajuan" tetap terjawab
 	if strings.TrimSpace(a.geminiKey) == "" {
-		return "AI lagi nonaktif. Kamu tetap bisa tanya seputar KPR; aku tidak akan mengakses data untuk pertanyaan ini.", nil
+		dc := strings.TrimSpace(dbContext)
+		if dc != "" {
+			if strings.HasPrefix(dc, "Tidak ada hasil.") {
+				app := extractAppNumber(text)
+				if app != "" {
+					return app + " tidak ketemu. Cek lagi nomornya ya. Kalau mau, kirim 'list pengajuan' biar aku tampilkan semua.", nil
+				}
+				return "Data tidak ketemu. Cek lagi ya, atau kirim 'list pengajuan' untuk daftar milik kamu.", nil
+			}
+			return dc, nil
+		}
+		return "AI lagi nonaktif.", nil
 	}
 
 	client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
@@ -1296,12 +1314,22 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		return "", fmt.Errorf("query error: %w", err)
 	}
 
-	// Jika tidak ada AI key, JANGAN tampilkan data mentah; hanya konteks user yang sudah disanitasi
 	if strings.TrimSpace(a.geminiKey) == "" {
-		if strings.TrimSpace(userCtx) != "" {
-			return "AI lagi nonaktif. Kami tidak menampilkan data mentah. " + userCtx, nil
+		dc := strings.TrimSpace(dbContext)
+		if dc != "" {
+			if strings.HasPrefix(dc, "Tidak ada hasil.") {
+				app := extractAppNumber(text)
+				if app != "" {
+					return app + " tidak ketemu. Cek lagi nomornya ya. Kalau mau, kirim 'list pengajuan' biar aku tampilkan semua.", nil
+				}
+				return "Data tidak ketemu. Cek lagi ya, atau kirim 'list pengajuan' untuk daftar milik kamu.", nil
+			}
+			return dc, nil
 		}
-		return "AI lagi nonaktif. Tidak ada data yang ditampilkan.", nil
+		if strings.TrimSpace(userCtx) != "" {
+			return userCtx, nil
+		}
+		return "Tidak ada data.", nil
 	}
 
 	// Gabungkan ke prompt akhir
