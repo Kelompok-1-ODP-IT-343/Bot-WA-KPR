@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 	waTypes "go.mau.fi/whatsmeow/types"
 	waEvents "go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	_ "modernc.org/sqlite" // SQLite driver for whatsmeow store
+	_ "modernc.org/sqlite"
 )
 
 type WhatsAppService struct {
@@ -56,6 +57,7 @@ func normalizePhone(s string) string {
 
 func NewWhatsAppService(storePath string) (*WhatsAppService, error) {
 	log.Printf("Initializing WhatsApp service with store path: %s", storePath)
+	// rand.Seed is deprecated as of Go 1.20; global generator auto-seeds
 
 	container, err := sqlstore.New(context.Background(), "sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout=5000&_pragma=foreign_keys=on", storePath), waLog.Stdout("SQLStore", "INFO", true))
 	if err != nil {
@@ -137,6 +139,13 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 	}
 	to := waTypes.NewJID(phoneNorm, waTypes.DefaultUserServer)
 	msg := &waProto.Message{Conversation: &message}
+
+	base := 30 + rand.Intn(21)
+	extra := time.Duration(len(message)) * 50 * time.Millisecond
+	time.Sleep(time.Duration(base) * time.Second)
+	_ = w.client.SendChatPresence(ctx, to, waTypes.ChatPresenceComposing, waTypes.ChatPresenceMediaText)
+	time.Sleep(extra)
+	_ = w.client.SendPresence(ctx, waTypes.PresenceAvailable)
 
 	// Retry mechanism for encryption issues
 	var resp whatsmeow.SendResponse
