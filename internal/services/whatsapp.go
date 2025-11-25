@@ -80,11 +80,27 @@ func NewWhatsAppService(storePath string) (*WhatsAppService, error) {
 	client.AddEventHandler(func(evt interface{}) {
 		switch v := evt.(type) {
 		case *waEvents.Connected:
-			log.Println("WhatsApp client connected successfully")
+			log.Println("[WA] Event Connected")
 		case *waEvents.Disconnected:
-			log.Printf("WhatsApp client disconnected: %v", v)
+			log.Printf("[WA] Event Disconnected: %+v", v)
 		case *waEvents.LoggedOut:
-			log.Println("WhatsApp client logged out")
+			log.Println("[WA] Event LoggedOut")
+		case *waEvents.ConnectFailure:
+			log.Printf("[WA] Event ConnectFailure: reason=%d loggedOut=%v", v.Reason, v.Reason.IsLoggedOut())
+		case *waEvents.KeepAliveTimeout:
+			log.Printf("[WA] Event KeepAliveTimeout: errorCount=%d lastSuccess=%s", v.ErrorCount, v.LastSuccess)
+		case *waEvents.KeepAliveRestored:
+			log.Printf("[WA] Event KeepAliveRestored")
+		case *waEvents.Presence:
+			log.Printf("[WA] Event Presence: from=%s unavailable=%v lastSeen=%s", v.From, v.Unavailable, v.LastSeen)
+		case *waEvents.ChatPresence:
+			log.Printf("[WA] Event ChatPresence: chat=%s state=%s media=%s", v.MessageSource.SourceString(), v.State, v.Media)
+		case *waEvents.Receipt:
+			log.Printf("[WA] Event Receipt: %+v", v)
+		case *waEvents.Message:
+			log.Printf("[WA] Event Message: %+v", v)
+		default:
+			log.Printf("[WA] Event %T", v)
 		}
 	})
 
@@ -140,12 +156,15 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 	to := waTypes.NewJID(phoneNorm, waTypes.DefaultUserServer)
 	msg := &waProto.Message{Conversation: &message}
 
-	base := 30 + rand.Intn(21)
-	extra := time.Duration(len(message)) * 50 * time.Millisecond
-	time.Sleep(time.Duration(base) * time.Second)
-	_ = w.client.SendChatPresence(ctx, to, waTypes.ChatPresenceComposing, waTypes.ChatPresenceMediaText)
-	time.Sleep(extra)
-	_ = w.client.SendPresence(ctx, waTypes.PresenceAvailable)
+	delay := time.Second + time.Duration(rand.Intn(1000))*time.Millisecond
+	if err := w.client.SendPresence(ctx, waTypes.PresenceAvailable); err != nil {
+		log.Printf("[WA] SendPresence error: %v", err)
+	}
+	if err := w.client.SendChatPresence(ctx, to, waTypes.ChatPresenceComposing, waTypes.ChatPresenceMediaText); err != nil {
+		log.Printf("[WA] SendChatPresence error: %v", err)
+	}
+	log.Printf("[WA] Humanized delay before send: %s len=%d", delay, len(message))
+	time.Sleep(delay)
 
 	// Retry mechanism for encryption issues
 	var resp whatsmeow.SendResponse
@@ -153,8 +172,10 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 	maxRetries := 3
 
 	for i := 0; i < maxRetries; i++ {
+		log.Printf("[WA] Sending attempt %d/%d to %s", i+1, maxRetries, phone)
 		resp, err = w.client.SendMessage(ctx, to, msg)
 		if err == nil {
+			log.Printf("[WA] Attempt %d success id=%s", i+1, resp.ID)
 			break
 		}
 
@@ -166,7 +187,7 @@ func (w *WhatsAppService) SendMessage(ctx context.Context, phone, message string
 			if i < maxRetries-1 {
 				// Wait before retry
 				time.Sleep(time.Duration(i+1) * 2 * time.Second)
-				log.Printf("[WA] Retrying message send to %s...", phone)
+				log.Printf("[WA] Retrying message send to %s after backoff...", phone)
 				continue
 			}
 		}

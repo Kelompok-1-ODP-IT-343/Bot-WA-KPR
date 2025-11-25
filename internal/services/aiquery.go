@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"sort"
@@ -838,9 +839,18 @@ func extractAppNumber(s string) string {
 }
 
 func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQLPlan, error) {
+	log.Printf("[AI] PlanQuery start len=%d gemini=%v", len(strings.TrimSpace(text)), strings.TrimSpace(a.geminiKey) != "")
 	if a.geminiKey == "" {
 		// Fallback: naive parser
-		return a.naivePlan(text)
+		p, err := a.naivePlan(text)
+		if err != nil {
+			log.Printf("[AI] PlanQuery naive error: %v", err)
+			return nil, err
+		}
+		if p != nil {
+			log.Printf("[AI] PlanQuery naive result table=%s cols=%d filters=%d limit=%d", strings.TrimSpace(p.Table), len(p.Columns), len(p.Filters), p.Limit)
+		}
+		return p, nil
 	}
 
 	client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
@@ -885,11 +895,15 @@ func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQ
 		return nil, err
 	}
 
+	if plan != nil {
+		log.Printf("[AI] PlanQuery result op=%s table=%s cols=%d filters=%d limit=%d sql=%v", strings.TrimSpace(plan.Operation), strings.TrimSpace(plan.Table), len(plan.Columns), len(plan.Filters), plan.Limit, strings.TrimSpace(plan.SQL) != "")
+	}
 	return plan, nil
 }
 
 func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan) (string, error) {
 	start := time.Now()
+	log.Printf("[AI] ExecuteQuery start sql=%v table=%s op=%s", strings.TrimSpace(plan.SQL) != "", strings.TrimSpace(plan.Table), strings.TrimSpace(plan.Operation))
 	var auditPhone string
 	if v := ctx.Value(ctxKey("audit_phone")); v != nil {
 		if s, ok := v.(string); ok {
@@ -910,6 +924,7 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 		}
 		rows, err := a.db.Query(ctx, q, args...)
 		if err != nil {
+			log.Printf("[AI] ExecuteQuery error: %v", err)
 			a.writeAuditEntry(auditPhone, plan, q, args, 0, time.Since(start), "error", err)
 			return "", fmt.Errorf("database query failed: %w", err)
 		}
@@ -917,8 +932,10 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 		out, count, rerr := a.rowsToTextAndCount(rows, 50)
 		a.writeAuditEntry(auditPhone, plan, q, args, count, time.Since(start), "ok", rerr)
 		if rerr != nil {
+			log.Printf("[AI] ExecuteQuery rows error: %v", rerr)
 			return "", rerr
 		}
+		log.Printf("[AI] ExecuteQuery ok rows=%d dur=%s", count, time.Since(start))
 		return out, nil
 	}
 
@@ -940,6 +957,7 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 	query, args := a.buildSafeSelect(plan)
 	rows, err := a.db.Query(ctx, query, args...)
 	if err != nil {
+		log.Printf("[AI] ExecuteQuery error: %v", err)
 		a.writeAuditEntry(auditPhone, plan, query, args, 0, time.Since(start), "error", err)
 		return "", fmt.Errorf("database query failed: %w", err)
 	}
@@ -947,8 +965,10 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 	out, count, rerr := a.rowsToTextAndCount(rows, 20)
 	a.writeAuditEntry(auditPhone, plan, query, args, count, time.Since(start), "ok", rerr)
 	if rerr != nil {
+		log.Printf("[AI] ExecuteQuery rows error: %v", rerr)
 		return "", rerr
 	}
+	log.Printf("[AI] ExecuteQuery ok rows=%d dur=%s", count, time.Since(start))
 	return out, nil
 }
 
@@ -957,6 +977,7 @@ func (a *AIQueryService) ExecuteQuery(ctx context.Context, plan *domain.SQLPlan)
 // 2) Eksekusi ke database (ExecuteQuery)
 // 3) Gabungkan hasil sebagai konteks, lalu minta jawaban AI berbasis basePrompt + pertanyaan user
 func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, basePrompt string) (string, error) {
+	log.Printf("[AI] AnswerWithDB start len=%d", len(strings.TrimSpace(text)))
 	// Intent gating: hanya akses DB bila pertanyaan memang meminta data
 	wantsData := isDataIntent(text)
 	var dbContext string
@@ -971,6 +992,7 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 			}
 		}
 	}
+	log.Printf("[AI] AnswerWithDB dbContext len=%d", len(strings.TrimSpace(dbContext)))
 
 	// Jika tidak ada AI key: jika ada konteks DB, kembalikan langsung agar pertanyaan seperti "list pengajuan" tetap terjawab
 	if strings.TrimSpace(a.geminiKey) == "" {
@@ -988,6 +1010,7 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 		return "AI lagi nonaktif.", nil
 	}
 
+	log.Printf("[AI] AnswerWithDB call Gemini")
 	client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
 	if err != nil {
 		return "", fmt.Errorf("gemini client: %w", err)
@@ -1037,12 +1060,14 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 	if strings.Contains(low, "tanti") && strings.HasPrefix(low, "halo") {
 		return out, nil
 	}
+	log.Printf("[AI] AnswerWithDB ok len=%d", len(out))
 	return intro + out, nil
 }
 
 // AnswerWithDBForUser: ambil konteks user berdasarkan phone, batasi rencana query ke user terkait bila mungkin,
 // gabungkan konteks user + hasil DB, lalu minta AI merumuskan jawaban akhir.
 func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone string, text string, basePrompt string) (string, error) {
+	log.Printf("[AI] AnswerWithDBForUser start phone=%s len=%d", userPhone, len(strings.TrimSpace(text)))
 	// Ambil dari memory bila tersedia untuk menghindari query berulang
 	mem := a.mem.Get(userPhone)
 	var userID int
@@ -1091,6 +1116,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		}
 
 		// Jawab pertanyaan umum KPR tanpa konteks data; hanya beri peringatan sekali
+		log.Printf("[AI] AnswerWithDBForUser call Gemini no-data")
 		client, err := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
 		if err != nil {
 			return "", fmt.Errorf("gemini client: %w", err)
@@ -1191,6 +1217,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 			if strings.TrimSpace(a.geminiKey) == "" {
 				return "AI lagi nonaktif dan tidak akan mengakses data. Silakan tanya apa saja soal KPR.", nil
 			}
+			log.Printf("[AI] AnswerWithDBForUser call Gemini general")
 			client, cerr := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
 			if cerr != nil {
 				return "", fmt.Errorf("gemini client: %w", cerr)
@@ -1270,6 +1297,7 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		if strings.TrimSpace(a.geminiKey) == "" {
 			return "Pertanyaan Anda tidak memerlukan atau mewajibkan akses data. AI tidak aktif, jadi tidak ada data yang ditampilkan.", nil
 		}
+		log.Printf("[AI] AnswerWithDBForUser call Gemini privacy")
 		client, cerr := ai.NewClient(ctx, option.WithAPIKey(a.geminiKey))
 		if cerr != nil {
 			return "", fmt.Errorf("gemini client: %w", cerr)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 
 	"github.com/Kelompok-1-ODP-IT-343/Bot-WA-KPR/internal/domain"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -34,14 +35,28 @@ func (d *DatabaseService) Query(ctx context.Context, query string, args ...inter
 	if d.db == nil {
 		return nil, fmt.Errorf("database not available")
 	}
-	return d.db.QueryContext(ctx, query, args...)
+	log.Printf("[DB] Query len=%d args=%d", len(query), len(args))
+	rows, err := d.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		log.Printf("[DB] Query error: %v", err)
+		return nil, err
+	}
+	log.Printf("[DB] Query ok")
+	return rows, nil
 }
 
 func (d *DatabaseService) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if d.db == nil {
 		return nil, fmt.Errorf("database not available")
 	}
-	return d.db.ExecContext(ctx, query, args...)
+	log.Printf("[DB] Exec len=%d args=%d", len(query), len(args))
+	res, err := d.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		log.Printf("[DB] Exec error: %v", err)
+		return nil, err
+	}
+	log.Printf("[DB] Exec ok")
+	return res, nil
 }
 
 func (d *DatabaseService) Close() error {
