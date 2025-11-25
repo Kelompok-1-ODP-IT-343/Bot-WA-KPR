@@ -1061,6 +1061,9 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 		return out, nil
 	}
 	log.Printf("[AI] AnswerWithDB ok len=%d", len(out))
+	if wantsData && strings.TrimSpace(dbContext) != "" && a.relaxed {
+		return intro + out + "\n" + dbContext, nil
+	}
 	return intro + out, nil
 }
 
@@ -1411,7 +1414,9 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 		return "Tidak ada jawaban.", nil
 	}
 	a.mem.Update(userPhone, func(m *UserMemory) { m.LastUser = text; m.LastBot = out; m.Greeted = true })
-	// Jangan menampilkan data mentah; jika privasi off untuk AI, cukup kembalikan jawaban
+	if wantsData && strings.TrimSpace(dbContext) != "" && a.relaxed {
+		return out + "\n" + dbContext, nil
+	}
 	return out, nil
 }
 

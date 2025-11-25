@@ -11,16 +11,16 @@ import (
 )
 
 type Config struct {
-    DatabaseURL       string
-    WhatsAppStorePath string
-    GeminiAPIKey      string
-    APIKey            string
-    HTTPAddr          string
-    OTPExpiryMinutes  int
-    KPRPromptPath     string
-    GeminiCanSeeData  bool
-    SQLAuditPath      string
-    RelaxSecurity     bool
+	DatabaseURL       string
+	WhatsAppStorePath string
+	GeminiAPIKey      string
+	APIKey            string
+	HTTPAddr          string
+	OTPExpiryMinutes  int
+	KPRPromptPath     string
+	GeminiCanSeeData  bool
+	SQLAuditPath      string
+	RelaxSecurity     bool
 }
 
 func NewConfig() domain.ConfigService {
@@ -60,32 +60,34 @@ func NewConfig() domain.ConfigService {
 		}
 	}
 
-    auditPath := os.Getenv("SQL_AUDIT_PATH")
-    if strings.TrimSpace(auditPath) == "" {
-        auditPath = "sql_audit.jsonl"
-    }
+	auditPath := os.Getenv("SQL_AUDIT_PATH")
+	if strings.TrimSpace(auditPath) == "" {
+		auditPath = "sql_audit.jsonl"
+	}
 
-    // Relax security for integration/testing (SELECT-only still enforced)
-    relaxSecurity := false
-    if v := os.Getenv("RELAX_SECURITY"); v != "" {
-        switch strings.ToLower(strings.TrimSpace(v)) {
-        case "true", "1", "yes", "on":
-            relaxSecurity = true
-        }
-    }
+	// Relax security for integration/testing (SELECT-only still enforced)
+	relaxSecurity := true
+	if v := os.Getenv("RELAX_SECURITY"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "false", "0", "no", "off":
+			relaxSecurity = false
+		case "true", "1", "yes", "on":
+			relaxSecurity = true
+		}
+	}
 
-    return &Config{
-        DatabaseURL:       os.Getenv("DATABASE_URL"),
-        WhatsAppStorePath: storePath,
-        GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
-        APIKey:            os.Getenv("API_KEY"),
-        HTTPAddr:          httpAddr,
-        OTPExpiryMinutes:  otpExpiryMinutes,
-        KPRPromptPath:     promptPath,
-        GeminiCanSeeData:  geminiCanSeeData,
-        SQLAuditPath:      auditPath,
-        RelaxSecurity:     relaxSecurity,
-    }
+	return &Config{
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		WhatsAppStorePath: storePath,
+		GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
+		APIKey:            os.Getenv("API_KEY"),
+		HTTPAddr:          httpAddr,
+		OTPExpiryMinutes:  otpExpiryMinutes,
+		KPRPromptPath:     promptPath,
+		GeminiCanSeeData:  geminiCanSeeData,
+		SQLAuditPath:      auditPath,
+		RelaxSecurity:     relaxSecurity,
+	}
 }
 
 func (c *Config) GetDatabaseURL() string {
@@ -121,11 +123,11 @@ func (c *Config) GetGeminiCanSeeData() bool {
 }
 
 func (c *Config) GetSQLAuditPath() string {
-    return c.SQLAuditPath
+	return c.SQLAuditPath
 }
 
 func (c *Config) GetRelaxSecurity() bool {
-    return c.RelaxSecurity
+	return c.RelaxSecurity
 }
 
 func (c *Config) Validate() error {
