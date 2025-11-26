@@ -919,71 +919,71 @@ func summarizeKPRApp(dbText string, appHint string) string {
 }
 
 func summarizeGeneral(text string, dbText string) string {
-	lines := strings.Split(strings.TrimSpace(dbText), "\n")
-	if len(lines) == 0 {
-		return ""
-	}
-	var first string
-	for _, ln := range lines {
-		ln = strings.TrimSpace(ln)
-		if ln != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
-			first = ln
-			break
-		}
-	}
-	if first == "" {
-		return "Data tidak ketemu."
-	}
-	kv := parseKVLine(first)
-	if kv["loan_amount"] != "" || kv["monthly_installment"] != "" || kv["status"] != "" {
-		msg := "Ditemukan pengajuan KPR milik Anda"
-		if s := kv["status"]; s != "" {
-			msg += " berstatus " + s
-		}
-		if v := kv["loan_amount"]; v != "" {
-			msg += ". Plafon Rp " + v
-		}
-		if v := kv["monthly_installment"]; v != "" {
-			msg += ", angsuran Rp " + v + "/bulan"
-		}
-		if v := kv["loan_term_years"]; v != "" {
-			msg += ", tenor " + v + " tahun"
-		}
-		return msg + ". Kamu juga bisa cek di Website Satuatap."
-	}
-	if kv["rate_name"] != "" || kv["effective_rate"] != "" || kv["min_income"] != "" {
-		msg := "Produk KPR yang aktif"
-		if v := kv["rate_name"]; v != "" {
-			msg += ": " + v
-		}
-		if v := kv["effective_rate"]; v != "" {
-			msg += ", bunga efektif " + v + "%"
-		}
-		if v := kv["min_income"]; v != "" {
-			msg += ", minimal gaji Rp " + v
-		}
-		return msg
-	}
-	if kv["stage"] != "" || kv["status"] != "" {
-		msg := "Proses approval"
-		if v := kv["stage"]; v != "" {
-			msg += ": " + v
-		}
-		if v := kv["status"]; v != "" {
-			msg += ", status " + v
-		}
-		return msg
-	}
-	c := 0
-	for _, ln := range lines {
-		if strings.TrimSpace(ln) != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
-			c++
-		}
-	}
-	if c > 0 {
-		return fmt.Sprintf("Ditemukan %d baris data.", c)
-	}
-	return ""
+    lines := strings.Split(strings.TrimSpace(dbText), "\n")
+    if len(lines) == 0 {
+        return ""
+    }
+    var first string
+    for _, ln := range lines {
+        ln = strings.TrimSpace(ln)
+        if ln != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
+            first = ln
+            break
+        }
+    }
+    if first == "" {
+        return "Data tidak ketemu."
+    }
+    kv := parseKVLine(first)
+    if kv["loan_amount"] != "" || kv["monthly_installment"] != "" || kv["status"] != "" {
+        msg := "Ditemukan pengajuan KPR milik Anda"
+        if s := kv["status"]; s != "" {
+            msg += " berstatus " + s
+        }
+        if v := kv["loan_amount"]; v != "" {
+            msg += ". Plafon Rp " + v
+        }
+        if v := kv["monthly_installment"]; v != "" {
+            msg += ", angsuran Rp " + v + "/bulan"
+        }
+        if v := kv["loan_term_years"]; v != "" {
+            msg += ", tenor " + v + " tahun"
+        }
+        return msg + ". Kamu juga bisa cek di Website Satuatap."
+    }
+    if kv["rate_name"] != "" || kv["effective_rate"] != "" || kv["min_income"] != "" {
+        msg := "Produk KPR yang aktif"
+        if v := kv["rate_name"]; v != "" {
+            msg += ": " + v
+        }
+        if v := kv["effective_rate"]; v != "" {
+            msg += ", bunga efektif " + v + "%"
+        }
+        if v := kv["min_income"]; v != "" {
+            msg += ", minimal gaji Rp " + v
+        }
+        return msg
+    }
+    if kv["stage"] != "" || kv["status"] != "" {
+        msg := "Proses approval"
+        if v := kv["stage"]; v != "" {
+            msg += ": " + v
+        }
+        if v := kv["status"]; v != "" {
+            msg += ", status " + v
+        }
+        return msg
+    }
+    c := 0
+    for _, ln := range lines {
+        if strings.TrimSpace(ln) != "" && !strings.HasPrefix(ln, "Tidak ada hasil") {
+            c++
+        }
+    }
+    if c > 0 {
+        return fmt.Sprintf("Ditemukan %d baris data.", c)
+    }
+    return ""
 }
 
 func (a *AIQueryService) PlanQuery(ctx context.Context, text string) (*domain.SQLPlan, error) {
@@ -1158,15 +1158,15 @@ func (a *AIQueryService) AnswerWithDB(ctx context.Context, text string, baseProm
 			if err != nil {
 				dbContext = ""
 			}
-			if strings.TrimSpace(dbContext) != "" {
-				app := extractAppNumber(text)
-				if strings.TrimSpace(app) != "" {
-					return summarizeKPRApp(dbContext, app), nil
-				}
-				if s := summarizeGeneral(text, dbContext); s != "" {
-					return s, nil
-				}
-			}
+            if strings.TrimSpace(dbContext) != "" {
+                app := extractAppNumber(text)
+                if strings.TrimSpace(app) != "" {
+                    return summarizeKPRApp(dbContext, app), nil
+                }
+                if s := summarizeGeneral(text, dbContext); s != "" {
+                    return s, nil
+                }
+            }
 		}
 	}
 	log.Printf("[AI] AnswerWithDB dbContext len=%d", len(strings.TrimSpace(dbContext)))
@@ -1529,15 +1529,15 @@ func (a *AIQueryService) AnswerWithDBForUser(ctx context.Context, userPhone stri
 	if err != nil {
 		return "", fmt.Errorf("query error: %w", err)
 	}
-	if strings.TrimSpace(dbContext) != "" {
-		app := extractAppNumber(text)
-		if strings.TrimSpace(app) != "" {
-			return summarizeKPRApp(dbContext, app), nil
-		}
-		if s := summarizeGeneral(text, dbContext); s != "" {
-			return s, nil
-		}
-	}
+    if strings.TrimSpace(dbContext) != "" {
+        app := extractAppNumber(text)
+        if strings.TrimSpace(app) != "" {
+            return summarizeKPRApp(dbContext, app), nil
+        }
+        if s := summarizeGeneral(text, dbContext); s != "" {
+            return s, nil
+        }
+    }
 
 	if strings.TrimSpace(a.geminiKey) == "" {
 		dc := strings.TrimSpace(dbContext)
